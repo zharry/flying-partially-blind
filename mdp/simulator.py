@@ -1,7 +1,10 @@
+import sys
+sys.path.append("..")
+
 import numpy as np
 
 import config
-from drone.drone_mdp import DroneMDP
+from mdp.drone import DroneMDP
 from drone.state import DroneState
 from drone.action import DroneAction
 

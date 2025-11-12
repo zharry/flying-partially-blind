@@ -2,6 +2,7 @@ import sys
 sys.path.append("..")
 
 import numpy as np
+
 import config
 from drone.state import DroneState
 from drone.action import DroneAction
@@ -92,6 +93,11 @@ class DroneMDP:
             if next_state.is_out_of_battery():
                 return config.BATTERY_EMPTY_PENALTY
         
+        # Out of bounds (means touching the boundary)
+        if next_state.position[0] <= 0 or next_state.position[0] >= config.GRID_SIZE - 1 or \
+           next_state.position[1] <= 0 or next_state.position[1] >= config.GRID_SIZE - 1:
+            return config.OUT_OF_BOUNDS_PENALTY
+
         # Step penalty
         step_penalty = config.STEP_PENALTY
         
@@ -101,11 +107,17 @@ class DroneMDP:
         return step_penalty + progress_reward
     
     def calculate_progress_reward(self, state: DroneState, next_state: DroneState) -> float:
+        # Current distance to goal
+        # distance_to_goal = np.linalg.norm(next_state.position - config.GOAL_POSITION)
+        # reward = config.PROGRESS_REWARD_MULTIPLIER / (
+        #     config.PROGRESS_REWARD_EPLISON + distance_to_goal
+        # )
+
+        # Difference in distance to goal
         old_distance = np.linalg.norm(state.position - config.GOAL_POSITION)
         new_distance = np.linalg.norm(next_state.position - config.GOAL_POSITION)
-        
-        progress = old_distance - new_distance
-        return config.PROGRESS_REWARD_MULTIPLIER * progress
+        reward = config.PROGRESS_REWARD_MULTIPLIER * (old_distance - new_distance)
+        return reward
     
     @staticmethod
     def clip_int(value: int, min_value: int, max_value: int) -> int:

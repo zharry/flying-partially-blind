@@ -1,7 +1,11 @@
+import random
+import sys
+sys.path.append("..")
+
 import numpy as np
 
 import config
-from drone.drone_mdp import DroneMDP
+from mdp.drone import DroneMDP
 from drone.state import DroneState
 from drone.action import DroneAction
 
@@ -11,7 +15,7 @@ class RolloutPlanner:
     # base_policy is a function that takes state and returns an action, used by the rollout planner
     # num_rollouts is the number of samples to perform for each action to find T(s'|s,a)
     # max_depth is the maximum depth to rollout for each next state
-    def __init__(self, mdp: DroneMDP, base_policy, num_rollouts: int = 10, max_depth: int = None, seed: int = None):
+    def __init__(self, mdp: DroneMDP, base_policy, num_rollouts: int, max_depth: int, seed: int = None):
         self.rng = np.random.RandomState(seed)
         self.discount = config.DISCOUNT_FACTOR
         self.mdp = mdp
@@ -49,7 +53,7 @@ class RolloutPlanner:
         current_state = state.copy()
         current_tick = tick
         total_return = 0.0
-        discount = self.discount
+        discount = 1.0
         
         # Take the first action
         next_state = self.mdp.transition(current_tick, current_state, first_action)
@@ -57,7 +61,7 @@ class RolloutPlanner:
         total_return += discount * reward
         current_state = next_state
         current_tick += 1
-        discount *= self.discount
+        discount = self.discount
         depth = 1
 
         # Continue with base policy
@@ -91,25 +95,11 @@ class RandomPolicy:
 
 
 class GreedyPolicy:
-    """Greedy policy: always moves toward goal (ignoring obstacles)."""
-    
+    # Heuristic Policy that moves towards goal
     @staticmethod
     def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
-        """
-        Select action that moves toward goal.
-        
-        Args:
-            state: Current state
-            tick: Current timestep (unused)
-            rng: Random number generator (unused)
-            
-        Returns:
-            action: Greedy action toward goal
-        """
         # Calculate direction to goal
         direction_to_goal = config.GOAL_POSITION - state.position
-        
-        # Desired velocity change (accounting for wind)
         desired_acceleration = direction_to_goal - state.velocity - state.wind
         
         # Clip to valid acceleration range
@@ -121,3 +111,13 @@ class GreedyPolicy:
         
         return DroneAction(clipped_acceleration)
 
+class RandomGreedyPolicy:
+    # 50% Chance to select most greedy action
+    # 50% Chance to select a random action
+    @staticmethod
+    def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
+        choice = random.randint(1, 2)
+        if choice == 1:
+            return GreedyPolicy.select_action(state, tick, rng)
+        else:
+            return RandomPolicy.select_action(state, tick, rng)
