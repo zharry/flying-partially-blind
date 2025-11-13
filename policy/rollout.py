@@ -108,18 +108,19 @@ class GreedyPolicy:
         desired_velocity = direction_unit * min(config.VELOCITY_MAX, distance)
         desired_acceleration = desired_velocity - state.velocity - state.wind
         
-        # Clip to valid acceleration range
+        # Clip to valid acceleration range and round
         clipped_acceleration = np.clip(
             desired_acceleration, 
             config.ACCEL_MIN, 
             config.ACCEL_MAX
-        ).astype(int)
+        )
+        rounded_acceleration = np.round(clipped_acceleration).astype(int)
         
-        return DroneAction(clipped_acceleration)
+        return DroneAction(rounded_acceleration)
 
 class RandomGreedyPolicy:
-    # 25% Chance to select most greedy action
-    # 75% Chance to select a random action
+    # 50% Chance to select most greedy action
+    # 50% Chance to select a random action
     @staticmethod
     def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
         choice = rng.randint(1, 3)
