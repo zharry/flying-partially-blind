@@ -82,6 +82,7 @@ class DroneMDP:
     def reward(self, state: DroneState, action: DroneAction, next_state: DroneState) -> float:
         # Check if next state is terminal and why
         if next_state.is_terminal():
+            # Goal is reached
             if next_state.is_goal_reached():
                 return config.GOAL_REWARD
             

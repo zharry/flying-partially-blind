@@ -29,8 +29,8 @@ ACCEL_MIN = -1           # Inclusive
 ACCEL_MAX = 1            # Inclusive
 
 # Obstacle positions (x, y)
-# Random Obstacles (Always Random)
-OBSTACLES = np.random.randint(0, GRID_SIZE, size=(40, 2))
+# 2-Line Maze Obstacles
+OBSTACLES = np.array([[x, 12] for x in range(0, 25)] + [[x, 25] for x in range(15, 40)])
 MAX_OBSTACLES = OBSTACLES.shape[0] # Zero-Indexed, Non-inclusive, See Above
 
 # Drone starting position
@@ -56,8 +56,8 @@ OBSTACLE_THRESHOLD = 0.50  # Radius around obstacle for collision, should not be
 
 # MDP parameters  
 DISCOUNT_FACTOR = 0.8
-ROLLOUT_NUM_ROLLOUTS = 15
-ROLLOUT_MAX_DEPTH = 10
+ROLLOUT_NUM_ROLLOUTS = 40
+ROLLOUT_MAX_DEPTH = 15
 
 # Plotting parameters
 LIVE_UPDATE = True
