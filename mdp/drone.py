@@ -62,7 +62,7 @@ class DroneMDP:
             # If the path passes through the obstacle threshold
             if distance <= config.OBSTACLE_THRESHOLD:
                 # Return the obstacle position (drone stops at obstacle)
-                return np.array([obstacle[0], obstacle[1]])
+                return obstacle.copy()
         return None
     
     def closest_point_on_segment(self, start: np.ndarray, end: np.ndarray, point: np.ndarray) -> np.ndarray:
@@ -108,15 +108,15 @@ class DroneMDP:
     
     def calculate_progress_reward(self, state: DroneState, next_state: DroneState) -> float:
         # Current distance to goal
-        # distance_to_goal = np.linalg.norm(next_state.position - config.GOAL_POSITION)
-        # reward = config.PROGRESS_REWARD_MULTIPLIER / (
-        #     config.PROGRESS_REWARD_EPLISON + distance_to_goal
-        # )
+        distance_to_goal = np.linalg.norm(next_state.position - config.GOAL_POSITION)
+        reward = config.PROGRESS_REWARD_MULTIPLIER / (
+            config.PROGRESS_REWARD_EPSILON + distance_to_goal
+        )
 
         # Difference in distance to goal
-        old_distance = np.linalg.norm(state.position - config.GOAL_POSITION)
-        new_distance = np.linalg.norm(next_state.position - config.GOAL_POSITION)
-        reward = config.PROGRESS_REWARD_MULTIPLIER * (old_distance - new_distance)
+        # old_distance = np.linalg.norm(state.position - config.GOAL_POSITION)
+        # new_distance = np.linalg.norm(next_state.position - config.GOAL_POSITION)
+        # reward = config.PROGRESS_REWARD_MULTIPLIER * (old_distance - new_distance)
         return reward
     
     @staticmethod

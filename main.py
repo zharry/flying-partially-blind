@@ -27,7 +27,7 @@ def main():
     )
     planner = RolloutPlanner(
         mdp=mdp, 
-        base_policy=RandomPolicy,  # Pure random for better exploration
+        base_policy=RandomGreedyPolicy,
         num_rollouts=config.ROLLOUT_NUM_ROLLOUTS, 
         max_depth=config.ROLLOUT_MAX_DEPTH, 
         seed=seed

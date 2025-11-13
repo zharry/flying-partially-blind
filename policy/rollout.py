@@ -56,7 +56,7 @@ class RolloutPlanner:
         discount = 1.0
         
         # Take the first action
-        next_state = self.mdp.transition(current_tick, current_state, first_action)
+        next_state = self.mdp.transition(current_tick + 1, current_state, first_action)
         reward = self.mdp.reward(current_state, first_action, next_state)
         total_return += discount * reward
         current_state = next_state
@@ -72,7 +72,7 @@ class RolloutPlanner:
             action = self.base_policy.select_action(current_state, current_tick, self.rng)
             
             # Take the next action
-            next_state = self.mdp.transition(current_tick, current_state, action)
+            next_state = self.mdp.transition(current_tick + 1, current_state, action)
             reward = self.mdp.reward(current_state, action, next_state)
             total_return += discount * reward
             
@@ -100,7 +100,13 @@ class GreedyPolicy:
     def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
         # Calculate direction to goal
         direction_to_goal = config.GOAL_POSITION - state.position
-        desired_acceleration = direction_to_goal - state.velocity - state.wind
+        distance = np.linalg.norm(direction_to_goal)
+        if distance > 0:
+            direction_unit = direction_to_goal / distance
+        else:
+            direction_unit = np.array([0, 0])
+        desired_velocity = direction_unit * min(config.VELOCITY_MAX, distance)
+        desired_acceleration = desired_velocity - state.velocity - state.wind
         
         # Clip to valid acceleration range
         clipped_acceleration = np.clip(
@@ -112,11 +118,11 @@ class GreedyPolicy:
         return DroneAction(clipped_acceleration)
 
 class RandomGreedyPolicy:
-    # 50% Chance to select most greedy action
-    # 50% Chance to select a random action
+    # 25% Chance to select most greedy action
+    # 75% Chance to select a random action
     @staticmethod
     def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
-        choice = random.randint(1, 2)
+        choice = rng.randint(1, 3)
         if choice == 1:
             return GreedyPolicy.select_action(state, tick, rng)
         else:
