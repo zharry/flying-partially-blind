@@ -13,7 +13,7 @@ class RolloutPlanner:
     discount: float
 
     # base_policy is a function that takes state and returns an action, used by the rollout planner
-    # num_rollouts is the number of samples to perform for each action to find T(s'|s,a)
+    # num_rollouts is the number of samples to perform for each action (to approximate T[s'|s,a])
     # max_depth is the maximum depth to rollout for each next state
     def __init__(self, mdp: DroneMDP, base_policy, num_rollouts: int, max_depth: int, seed: int = None):
         self.rng = np.random.RandomState(seed)
@@ -23,15 +23,13 @@ class RolloutPlanner:
         self.num_rollouts = num_rollouts
         self.max_depth = max_depth
 
-    # Essentially RolloutLookahead
     def select_action(self, state: DroneState, tick: int) -> tuple[DroneAction, float]:
         # Get all possible actions
         all_actions = DroneAction.get_action_space()
-        
         best_action = None
         best_value = -np.inf
         
-        # Evaluate each action
+        # Evaluate each initial action from current state
         for action in all_actions:
             # Average return over multiple rollouts
             total_value = 0.0
@@ -40,15 +38,14 @@ class RolloutPlanner:
                 total_value += value
             avg_value = total_value / self.num_rollouts
             
-            # Track best action
+            # Track best next action
             if avg_value > best_value:
                 best_value = avg_value
                 best_action = action
         
-        # Return best action greedily
+        # Return best next action greedily
         return best_action, best_value
     
-    # Essentially the estimated reward plus utility
     def _rollout(self, state: DroneState, first_action: DroneAction, tick: int) -> float:
         current_state = state.copy()
         current_tick = tick
@@ -75,8 +72,6 @@ class RolloutPlanner:
             next_state = self.mdp.transition(current_tick + 1, current_state, action)
             reward = self.mdp.reward(current_state, action, next_state)
             total_return += discount * reward
-            
-            # Update for next iteration
             current_state = next_state
             current_tick += 1
             discount *= self.discount
@@ -119,8 +114,8 @@ class GreedyPolicy:
         return DroneAction(rounded_acceleration)
 
 class RandomGreedyPolicy:
-    # 50% Chance to select most greedy action
-    # 50% Chance to select a random action
+    # 50% Chance to select greedy action
+    # 50% Chance to select random action
     @staticmethod
     def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
         choice = rng.randint(1, 3)

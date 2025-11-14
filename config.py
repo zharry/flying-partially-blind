@@ -59,6 +59,23 @@ DISCOUNT_FACTOR = 0.8
 ROLLOUT_NUM_ROLLOUTS = 15
 ROLLOUT_MAX_DEPTH = 10
 
+# Multi-agent parameters
+NUM_AGENTS = 2                      # Number of agents in the system
+AGENT_COLLISION_THRESHOLD = 1.0     # Distance threshold for agent-agent collision, should not be exactly 0
+AGENT_COLLISION_PENALTY = -500      # Penalty for colliding with another agent, should not be exactly 0
+
+# Multi-agent goal positions, must have length NUM_AGENTS
+MULTI_AGENT_GOAL_POSITIONS = np.array([
+    [20, 35],
+    [35, 20],
+])
+
+# Multi-agent starting positions, must have length NUM_AGENTS
+MULTI_AGENT_STARTING_POSITIONS = np.array([
+    [10, 5],
+    [5, 10],
+])
+
 # Plotting parameters
 LIVE_UPDATE = True
 PLOT_FIGURE_SIZE = 1500
