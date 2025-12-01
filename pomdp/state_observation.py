@@ -73,7 +73,11 @@ class GlobalOccupancyGrid:
     The persistent memory of the robot.
     Stores Log-Odds for every cell.
     
-    Prior assumption: Unobserved cells have 0% obstacle probability (assumed free).
+    Probability model:
+    - Unobserved cells: 0% obstacle probability (optimistically assumed free)
+    - First observation: 80% confidence in what was observed
+      (OCCUPIED reading → 80%, FREE reading → 20%)
+    - Subsequent observations: Bayesian update with 80% sensor accuracy
     
     Optimized for incremental updates:
     - Only tracks cells that have been observed
@@ -97,28 +101,48 @@ class GlobalOccupancyGrid:
     def update(self, coord: Coordinate, is_observed_occupied: bool) -> None:
         """
         Bayesian update of the cell using Log-Odds.
+        
+        First observation: Sets probability to 80% confidence in observation.
+        - Observed as OCCUPIED → 80% obstacle probability
+        - Observed as FREE → 20% obstacle probability
+        
+        Subsequent observations: Bayesian update with 80% sensor accuracy.
         """
-        # Track this cell as observed and updated
-        self.observed_cells.add(coord)
+        # Track this cell as updated in this observation cycle
         self.last_updated_cells.add(coord)
         
-        # 1. Update value
-        if is_observed_occupied:
-            self.grid_log_odds[coord] += LO_OCCUPIED
+        # Check if this is the first observation for this cell
+        is_first_observation = coord not in self.observed_cells
+        self.observed_cells.add(coord)
+        
+        if is_first_observation:
+            # First observation: directly SET to sensor confidence level
+            if is_observed_occupied:
+                self.grid_log_odds[coord] = LO_OCCUPIED  # P(occupied) = 0.8
+            else:
+                self.grid_log_odds[coord] = LO_FREE      # P(occupied) = 0.2
         else:
-            self.grid_log_odds[coord] += LO_FREE
+            # Subsequent observations: Bayesian update (ADD to existing)
+            if is_observed_occupied:
+                self.grid_log_odds[coord] += LO_OCCUPIED
+            else:
+                self.grid_log_odds[coord] += LO_FREE
             
-        # 2. Clamp values to prevent infinity
+        # Clamp values to prevent infinity
         current = self.grid_log_odds[coord]
         self.grid_log_odds[coord] = max(min(current, MAX_CONFIDENCE), -MAX_CONFIDENCE)
     
     def get_probability(self, coord: Coordinate) -> float:
         """
         Get probability of cell being occupied.
-        Unobserved cells have 0% probability (assumed free).
+        
+        - Unobserved cells: 0% probability (optimistically assumed free)
+        - First observation: 80% confidence in what was observed
+          (FREE → 20% occupied, OCCUPIED → 80% occupied)
+        - Subsequent observations: Bayesian-updated probability
         """
         if coord not in self.observed_cells:
-            return 0.0  # Unobserved = assumed free
+            return 0.0  # Unobserved = optimistically assumed free
         l_val = self.grid_log_odds[coord]
         return 1.0 - (1.0 / (1.0 + math.exp(l_val)))
 
