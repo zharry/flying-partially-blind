@@ -8,14 +8,21 @@ def main():
     # Init Agent (uses DIRECTIONS and ACTIONS from config/state_observation)
     agent = RobotAgent(ROBOT_STARTING_POSITION, ROBOT_GOAL_POSITION, DIRECTIONS)
     
+    # Global history of visited positions (shared with rollout policy)
+    global_visited = set()
+    
     # Init Planner (POMCP)
     # POMCP is technically POUCT applied to POMDPs.
     # Note: planner.update() updates both tree and belief, but we overwrite
     # the belief manually after for more control.
-    # Use greedy rollout policy that picks action with highest immediate reward
+    # Use greedy rollout policy with revisit penalty
     transition_model = GridTransitionModel()
     reward_model = GridRewardModel()
-    rollout_policy = GridRolloutPolicy(ACTIONS, transition_model, reward_model)
+    rollout_policy = GridRolloutPolicy(
+        ACTIONS, transition_model, reward_model,
+        global_visited=global_visited,
+        revisit_penalty=-10.0
+    )
     planner = pomdp_py.POMCP(max_depth=10, exploration_const=5.0, num_sims=500, 
                               rollout_policy=rollout_policy)
 
@@ -24,6 +31,9 @@ def main():
     # Mock Real World (The Truth)
     true_obstacles = [Coordinate(2, 2), Coordinate(2, 3), Coordinate(2, 4), Coordinate(5, 5)]
     true_robot_pos = ROBOT_STARTING_POSITION
+    
+    # Add starting position to visited set
+    global_visited.add(true_robot_pos)
     
     # Initialize visualizer
     viz = GridVisualizer(
@@ -49,8 +59,10 @@ def main():
             print("  -> Bonk! Hitting wall.")
         else:
             true_robot_pos = new_pos
+            # Track visited position
+            global_visited.add(true_robot_pos)
             
-        print(f"  -> True Pos: {true_robot_pos}")
+        print(f"  -> True Pos: {true_robot_pos} (visited: {len(global_visited)} positions)")
         
         # Update visualization
         viz.update(true_robot_pos, step=step+1, action_name=action.name)

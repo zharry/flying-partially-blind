@@ -286,22 +286,36 @@ class GridPolicyModel(pomdp_py.PolicyModel):
         return random.choice(self.actions)
 
 class GridRolloutPolicy(pomdp_py.RolloutPolicy):
-    """Custom rollout policy that returns the action with highest immediate reward."""
-    def __init__(self, actions, transition_model: GridTransitionModel, reward_model: GridRewardModel):
+    """
+    Custom rollout policy with:
+    - Single-step greedy action selection
+    - Penalty for revisiting globally visited positions
+    """
+    def __init__(self, actions, transition_model: GridTransitionModel, reward_model: GridRewardModel,
+                 global_visited: set = None, revisit_penalty: float = -10.0):
         self.actions = actions
         self.transition_model = transition_model
         self.reward_model = reward_model
+        self.global_visited = global_visited if global_visited is not None else set()
+        self.revisit_penalty = revisit_penalty
     
-    def rollout(self, state, history):
-        """Return the action that maximizes immediate reward (greedy rollout)."""
+    def rollout(self, state, history=None):
+        """
+        Return the action that maximizes immediate reward minus revisit penalty.
+        Depth-1 lookahead with penalty for visiting already-visited positions.
+        """
         best_action = None
         best_reward = float('-inf')
         
         for action in self.actions:
             # Simulate the next state
             next_state = self.transition_model.sample(state, action)
-            # Calculate reward for this action
+            # Calculate base reward for this action
             reward = self.reward_model.sample(state, action, next_state)
+            
+            # Apply revisit penalty if the resulting position was already visited
+            if next_state.drone_pos in self.global_visited:
+                reward += self.revisit_penalty
             
             if reward > best_reward:
                 best_reward = reward
