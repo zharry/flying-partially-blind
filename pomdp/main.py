@@ -1,6 +1,7 @@
 from state_observation import *
 from agent import *
 from config import DIRECTIONS, GRID_WIDTH, GRID_HEIGHT
+from visualization import GridVisualizer
 import pomdp_py
 
 def main():
@@ -24,6 +25,15 @@ def main():
     true_obstacles = [Coordinate(2, 2), Coordinate(2, 3), Coordinate(2, 4), Coordinate(5, 5)]
     true_robot_pos = ROBOT_STARTING_POSITION
     
+    # Initialize visualizer
+    viz = GridVisualizer(
+        grid_width=GRID_WIDTH,
+        grid_height=GRID_HEIGHT,
+        obstacles=true_obstacles,
+        goal=ROBOT_GOAL_POSITION
+    )
+    viz.update(true_robot_pos, step=0, action_name="start")
+    
     for step in range(200):
         # 1. Plan
         action = planner.plan(agent)
@@ -41,6 +51,9 @@ def main():
             true_robot_pos = new_pos
             
         print(f"  -> True Pos: {true_robot_pos}")
+        
+        # Update visualization
+        viz.update(true_robot_pos, step=step+1, action_name=action.name)
         
         # 3. Observe (Generate 80% accurate observation)
         # We cheat and use the agent's observation model to generate a sample
@@ -61,7 +74,11 @@ def main():
         # Check Goal
         if true_robot_pos == ROBOT_GOAL_POSITION:
             print("Goal Reached!")
+            viz.show_goal_reached()
             break
+    
+    # Keep window open at the end
+    viz.show()
 
 if __name__ == "__main__":
     main()
