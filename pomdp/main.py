@@ -1,21 +1,47 @@
+import argparse
 from state_observation import *
 from agent import *
-from config import DIRECTIONS, GRID_WIDTH, GRID_HEIGHT
+from config import (
+    DIRECTIONS, GRID_WIDTH, GRID_HEIGHT, 
+    TestCase, TEST_CASES, get_test_case, list_test_cases
+)
 from visualization import GridVisualizer
 import pomdp_py
 
-def main():
-    # Init Agent (uses DIRECTIONS and ACTIONS from config/state_observation)
-    agent = RobotAgent(ROBOT_STARTING_POSITION, ROBOT_GOAL_POSITION, DIRECTIONS)
+
+def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = True):
+    """
+    Run the POMDP drone simulation with a given test case.
+    
+    Args:
+        test_case: The test case configuration to run
+        max_steps: Maximum number of simulation steps
+        verbose: Whether to print step-by-step output
+    
+    Returns:
+        dict with simulation results (success, steps, final_position)
+    """
+    # Extract test case configuration
+    start_pos = Coordinate(*test_case.start_pos)
+    goal_pos = Coordinate(*test_case.goal_pos)
+    true_obstacles = [Coordinate(x, y) for x, y in test_case.obstacles]
+    
+    if verbose:
+        print(f"\n{'='*60}")
+        print(f"Test Case: {test_case.name}")
+        print(f"Difficulty: {test_case.difficulty}")
+        print(f"Description: {test_case.description}")
+        print(f"Start: {start_pos}, Goal: {goal_pos}")
+        print(f"Obstacles: {len(true_obstacles)} cells")
+        print(f"{'='*60}\n")
+    
+    # Init Agent
+    agent = RobotAgent(start_pos, goal_pos, DIRECTIONS)
     
     # Global history of visited positions (shared with rollout policy)
     global_visited = set()
     
     # Init Planner (POMCP)
-    # POMCP is technically POUCT applied to POMDPs.
-    # Note: planner.update() updates both tree and belief, but we overwrite
-    # the belief manually after for more control.
-    # Use greedy rollout policy with revisit penalty
     transition_model = GridTransitionModel()
     reward_model = GridRewardModel()
     rollout_policy = GridRolloutPolicy(
@@ -23,14 +49,18 @@ def main():
         global_visited=global_visited,
         revisit_penalty=-10.0
     )
-    planner = pomdp_py.POMCP(max_depth=10, exploration_const=5.0, num_sims=500, 
-                              rollout_policy=rollout_policy)
+    planner = pomdp_py.POMCP(
+        max_depth=15, 
+        exploration_const=5.0, 
+        num_sims=500, 
+        rollout_policy=rollout_policy
+    )
 
-    print("Starting Simulation...")
+    if verbose:
+        print("Starting Simulation...")
     
     # Mock Real World (The Truth)
-    true_obstacles = [Coordinate(2, 2), Coordinate(2, 3), Coordinate(2, 4), Coordinate(5, 5)]
-    true_robot_pos = ROBOT_STARTING_POSITION
+    true_robot_pos = start_pos
     
     # Add starting position to visited set
     global_visited.add(true_robot_pos)
@@ -40,57 +70,138 @@ def main():
         grid_width=GRID_WIDTH,
         grid_height=GRID_HEIGHT,
         obstacles=true_obstacles,
-        goal=ROBOT_GOAL_POSITION
+        goal=goal_pos
     )
     viz.update(true_robot_pos, step=0, action_name="start")
     
-    for step in range(200):
+    # Simulation loop
+    success = False
+    final_step = max_steps
+    
+    for step in range(max_steps):
         # 1. Plan
         action = planner.plan(agent)
-        print(f"Step {step}: Moving {action.name}")
+        if verbose:
+            print(f"Step {step}: Moving {action.name}")
         
         # 2. Execute (Update True World)
-        # (Simple physics for simulation)
         nx = true_robot_pos.x + action.delta[0]
         ny = true_robot_pos.y + action.delta[1]
         new_pos = Coordinate(nx, ny)
         
         if new_pos in true_obstacles or not (0 <= nx < GRID_WIDTH and 0 <= ny < GRID_HEIGHT):
-            print("  -> Bonk! Hitting wall.")
+            if verbose:
+                print("  -> Bonk! Hitting wall.")
         else:
             true_robot_pos = new_pos
-            # Track visited position
             global_visited.add(true_robot_pos)
             
-        print(f"  -> True Pos: {true_robot_pos} (visited: {len(global_visited)} positions)")
+        if verbose:
+            print(f"  -> True Pos: {true_robot_pos} (visited: {len(global_visited)} positions)")
         
         # Update visualization
         viz.update(true_robot_pos, step=step+1, action_name=action.name)
         
-        # 3. Observe (Generate 80% accurate observation)
-        # We cheat and use the agent's observation model to generate a sample
-        # based on the TRUE state.
-        true_state = GridState(true_robot_pos, true_obstacles, ROBOT_GOAL_POSITION)
+        # 3. Observe (Generate observation based on sensor accuracy)
+        true_state = GridState(true_robot_pos, true_obstacles, goal_pos)
         real_obs = agent.observation_model.sample(true_state, action)
         
-        # 4. MANUAL BELIEF UPDATE (completely bypasses POMCP's belief filtering)
-        # We DON'T call planner.update() because it does particle filtering which
-        # causes deprivation. Instead, we just set the belief directly.
-        # POMCP will rebuild the tree from scratch using our belief on next plan().
+        # 4. Manual belief update
         agent.manual_belief_update(action, real_obs, true_robot_pos)
         
         # 5. Reset tree so POMCP starts fresh with the new belief
-        # This prevents issues where the old tree doesn't match the new belief
         agent.tree = None
         
         # Check Goal
-        if true_robot_pos == ROBOT_GOAL_POSITION:
-            print("Goal Reached!")
+        if true_robot_pos == goal_pos:
+            if verbose:
+                print(f"\n🎉 Goal Reached in {step + 1} steps!")
             viz.show_goal_reached()
+            success = True
+            final_step = step + 1
             break
+    
+    if not success and verbose:
+        print(f"\n❌ Failed to reach goal within {max_steps} steps")
     
     # Keep window open at the end
     viz.show()
+    
+    return {
+        "success": success,
+        "steps": final_step,
+        "final_position": true_robot_pos,
+        "test_case": test_case.name
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="POMDP Drone Navigation Simulation")
+    parser.add_argument(
+        "--test-case", "-t",
+        type=str,
+        default="easy_open_field",
+        help="Name of the test case to run"
+    )
+    parser.add_argument(
+        "--list", "-l",
+        action="store_true",
+        help="List all available test cases"
+    )
+    parser.add_argument(
+        "--difficulty", "-d",
+        type=str,
+        choices=["easy", "medium", "hard"],
+        help="Filter test cases by difficulty (used with --list)"
+    )
+    parser.add_argument(
+        "--max-steps", "-m",
+        type=int,
+        default=500,
+        help="Maximum number of simulation steps"
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Suppress step-by-step output"
+    )
+    
+    args = parser.parse_args()
+    
+    # List mode
+    if args.list:
+        print("\nAvailable Test Cases:")
+        print("-" * 60)
+        for name in list_test_cases(args.difficulty):
+            tc = TEST_CASES[name]
+            print(f"  [{tc.difficulty:6}] {name:25} - {tc.description[:40]}...")
+        print()
+        return
+    
+    # Run simulation
+    try:
+        test_case = get_test_case(args.test_case)
+    except ValueError as e:
+        print(f"Error: {e}")
+        print("\nUse --list to see available test cases")
+        return
+    
+    result = run_simulation(
+        test_case=test_case,
+        max_steps=args.max_steps,
+        verbose=not args.quiet
+    )
+    
+    # Print summary
+    print("\n" + "=" * 60)
+    print("SIMULATION SUMMARY")
+    print("=" * 60)
+    print(f"Test Case: {result['test_case']}")
+    print(f"Result: {'SUCCESS ✓' if result['success'] else 'FAILED ✗'}")
+    print(f"Steps: {result['steps']}")
+    print(f"Final Position: {result['final_position']}")
+    print("=" * 60)
+
 
 if __name__ == "__main__":
     main()

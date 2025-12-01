@@ -25,9 +25,7 @@ class Coordinate():
     def __hash__(self) -> int:
         return hash((self.x, self.y))
 
-# Define constants after Coordinate class
-ROBOT_STARTING_POSITION = Coordinate(0, 0)
-ROBOT_GOAL_POSITION = Coordinate(9, 9)
+# Note: Starting position and goal are now defined per test case in config.py
 
 class GridState(pomdp_py.State):
     
@@ -74,18 +72,36 @@ class GlobalOccupancyGrid:
     """
     The persistent memory of the robot.
     Stores Log-Odds for every cell.
+    
+    Prior assumption: Unobserved cells have 0% obstacle probability (assumed free).
+    
+    Optimized for incremental updates:
+    - Only tracks cells that have been observed
+    - Tracks which cells changed in the most recent observation
     """
     def __init__(self, width: int, height: int) -> None:
         self.width = width
         self.height = height
         # Default log odds is 0 (Probability 0.5)
         # Key is Coordinate, value is log-odds float
-        self.grid_log_odds: Dict[Coordinate, float] = defaultdict(float) 
+        self.grid_log_odds: Dict[Coordinate, float] = defaultdict(float)
+        
+        # Optimization: Track observed cells for sparse sampling
+        self.observed_cells: set = set()  # All cells ever observed
+        self.last_updated_cells: set = set()  # Cells updated in current observation
+        
+    def begin_observation(self) -> None:
+        """Call before processing a new observation to reset change tracking."""
+        self.last_updated_cells.clear()
 
     def update(self, coord: Coordinate, is_observed_occupied: bool) -> None:
         """
         Bayesian update of the cell using Log-Odds.
         """
+        # Track this cell as observed and updated
+        self.observed_cells.add(coord)
+        self.last_updated_cells.add(coord)
+        
         # 1. Update value
         if is_observed_occupied:
             self.grid_log_odds[coord] += LO_OCCUPIED
@@ -95,30 +111,61 @@ class GlobalOccupancyGrid:
         # 2. Clamp values to prevent infinity
         current = self.grid_log_odds[coord]
         self.grid_log_odds[coord] = max(min(current, MAX_CONFIDENCE), -MAX_CONFIDENCE)
+    
+    def get_probability(self, coord: Coordinate) -> float:
+        """
+        Get probability of cell being occupied.
+        Unobserved cells have 0% probability (assumed free).
+        """
+        if coord not in self.observed_cells:
+            return 0.0  # Unobserved = assumed free
+        l_val = self.grid_log_odds[coord]
+        return 1.0 - (1.0 / (1.0 + math.exp(l_val)))
 
     def sample_map_hypothesis(self) -> List[Coordinate]:
         """
         Generates a concrete map (list of obstacles) for a particle
         based on current probabilities.
+        
+        OPTIMIZED: Only samples from observed cells (sparse sampling).
+        Unobserved cells have 0% probability — assumed free (no obstacles).
         """
         generated_obstacles: List[Coordinate] = []
         
-        # We assume the world is the size of the grid.
-        # Ideally, we iterate over all 'known' cells or the whole bounds.
-        for x in range(self.width):
-            for y in range(self.height):
-                coord = Coordinate(x, y)
-                l_val = self.grid_log_odds.get(coord, 0.0) # Default 0.0 (50/50)
-                
-                # Convert Log-Odds back to Probability
-                # P = 1 - (1 / (1 + e^L))
-                prob_occupied = 1.0 - (1.0 / (1.0 + math.exp(l_val)))
-                
-                # Roll the dice for this particle
-                if random.random() < prob_occupied:
-                    generated_obstacles.append(coord)
+        # Only iterate over cells we've actually observed
+        # Unobserved cells = 0% obstacle probability, so they're never added
+        for coord in self.observed_cells:
+            prob_occupied = self.get_probability(coord)
+            
+            # Roll the dice for this particle
+            if random.random() < prob_occupied:
+                generated_obstacles.append(coord)
                     
         return generated_obstacles
+    
+    def sample_incremental(self, parent_obstacles: frozenset) -> List[Coordinate]:
+        """
+        FAST incremental sampling: Only resample cells that changed in this observation.
+        
+        Args:
+            parent_obstacles: Obstacle set from a parent particle to inherit from
+            
+        Returns:
+            New obstacle list with only the changed cells resampled
+        """
+        # Start with parent's obstacles (as a mutable set)
+        new_obstacles = set(parent_obstacles)
+        
+        # Only resample the cells that were updated in this observation
+        for coord in self.last_updated_cells:
+            prob_occupied = self.get_probability(coord)
+            
+            if random.random() < prob_occupied:
+                new_obstacles.add(coord)
+            else:
+                new_obstacles.discard(coord)
+        
+        return list(new_obstacles)
 
 class GridAction(pomdp_py.Action):
     def __init__(self, name: str, delta: Tuple[int, int]) -> None:
