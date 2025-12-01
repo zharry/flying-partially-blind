@@ -1,9 +1,10 @@
 from __future__ import annotations
 import pomdp_py
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 import random
 from collections import defaultdict
 import math
+import heapq
 
 from config import (
     GRID_WIDTH, GRID_HEIGHT, SENSOR_ACCURACY, SENSOR_RANGE,
@@ -311,37 +312,179 @@ class GridTransitionModel(pomdp_py.TransitionModel):
         # Collision or out of bounds -> Stay still
         return GridState(state.drone_pos, state.obstacle_pos, state.goal)
 
+class AStarPathfinder:
+    """
+    A* pathfinder with caching based on obstacle configuration.
+    
+    Cache key: (obstacle_frozenset, start_coord, goal_coord)
+    Cache value: (steps_to_goal, next_coord, next_action)
+    """
+    
+    def __init__(self, width: int, height: int, actions: List[GridAction]):
+        self.width = width
+        self.height = height
+        # Only use movement actions (exclude 'stay')
+        self.movement_deltas = [(a.delta, a) for a in actions if a.delta != (0, 0)]
+        # Cache: (obstacle_frozenset, start_coord, goal_coord) -> (steps, next_coord, next_action)
+        self._cache: Dict[Tuple[frozenset, Coordinate, Coordinate], Tuple[int, Optional[Coordinate], Optional[GridAction]]] = {}
+    
+    def _heuristic(self, coord: Coordinate, goal: Coordinate) -> float:
+        """Octile distance (diagonal moves cost sqrt(2), cardinal moves cost 1)."""
+        dx = abs(coord.x - goal.x)
+        dy = abs(coord.y - goal.y)
+        # Octile distance: move diagonally as much as possible, then straight
+        return max(dx, dy) + (math.sqrt(2) - 1) * min(dx, dy)
+    
+    def find_path(self, start: Coordinate, goal: Coordinate,
+                  obstacle_set: frozenset) -> Tuple[int, Optional[Coordinate], Optional[GridAction]]:
+        """
+        Find shortest path using A*.
+        
+        Args:
+            start: Starting coordinate
+            goal: Goal coordinate
+            obstacle_set: Frozenset of obstacle coordinates
+            
+        Returns:
+            (steps_to_goal, next_node, action_to_next_node)
+            - If no path exists: (infinity as large int, None, None)
+            - If already at goal: (0, start, None)
+        """
+        # Check cache
+        cache_key = (obstacle_set, start, goal)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        # Already at goal
+        if start == goal:
+            result = (0, start, None)
+            self._cache[cache_key] = result
+            return result
+        
+        # A* search
+        # Priority queue: (f_score, counter, coord)
+        counter = 0
+        open_set = [(self._heuristic(start, goal), counter, start)]
+        came_from: Dict[Coordinate, Tuple[Coordinate, GridAction]] = {}  # node -> (parent, action)
+        g_score = {start: 0}
+        visited = set()
+        
+        while open_set:
+            _, _, current = heapq.heappop(open_set)
+            
+            if current in visited:
+                continue
+            visited.add(current)
+            
+            if current == goal:
+                # Reconstruct path to find the first step
+                path = []
+                node = current
+                while node in came_from:
+                    parent, action = came_from[node]
+                    path.append((node, action))
+                    node = parent
+                
+                # path[-1] is (first_node_after_start, action_from_start)
+                if path:
+                    steps = len(path)
+                    next_node, next_action = path[-1]
+                    result = (steps, next_node, next_action)
+                else:
+                    result = (0, start, None)
+                
+                self._cache[cache_key] = result
+                return result
+            
+            for delta, action in self.movement_deltas:
+                nx = current.x + delta[0]
+                ny = current.y + delta[1]
+                
+                # Check bounds
+                if not (0 <= nx < self.width and 0 <= ny < self.height):
+                    continue
+                
+                neighbor = Coordinate(nx, ny)
+                
+                # Check obstacle
+                if neighbor in obstacle_set:
+                    continue
+                
+                if neighbor in visited:
+                    continue
+                
+                # Diagonal moves cost sqrt(2), cardinal moves cost 1
+                move_cost = math.sqrt(2) if (delta[0] != 0 and delta[1] != 0) else 1.0
+                tentative_g = g_score[current] + move_cost
+                
+                if neighbor not in g_score or tentative_g < g_score[neighbor]:
+                    came_from[neighbor] = (current, action)
+                    g_score[neighbor] = tentative_g
+                    f_score = tentative_g + self._heuristic(neighbor, goal)
+                    counter += 1
+                    heapq.heappush(open_set, (f_score, counter, neighbor))
+        
+        # No path found - use large penalty value
+        result = (10000, None, None)
+        self._cache[cache_key] = result
+        return result
+    
+    def clear_cache(self):
+        """Clear the pathfinding cache."""
+        self._cache.clear()
+
+
 class GridRewardModel(pomdp_py.RewardModel):
-    def __init__(self, progress_weight: float = 2.0):
+    """
+    A*-based reward model.
+    
+    Reward structure:
+    - Reaching the goal: +100 (terminal reward)
+    - Collision (tried to move but stayed): -100
+    - Otherwise: negative of A* steps from next_state to goal
+    - Stay action (not at goal): additional -1 penalty
+    """
+    
+    def __init__(self, pathfinder: AStarPathfinder, no_path_penalty: float = -1000.0,
+                 goal_reward: float = 100.0):
         """
         Args:
-            progress_weight: Multiplier for distance-based progress reward
+            pathfinder: AStarPathfinder instance for computing distances
+            no_path_penalty: Penalty when no path to goal exists
+            goal_reward: Bonus reward for reaching the goal
         """
-        self.progress_weight = progress_weight
-    
-    def _manhattan_distance(self, pos: Coordinate, goal: Coordinate) -> int:
-        return abs(pos.x - goal.x) + abs(pos.y - goal.y)
+        self.pathfinder = pathfinder
+        self.no_path_penalty = no_path_penalty
+        self.goal_reward = goal_reward
     
     def sample(self, state: GridState, action: GridAction, next_state: GridState) -> float:
-        # Check if drone reached the goal
+        # Check if we reached the goal - give large positive reward
         if next_state.drone_pos == next_state.goal:
-            return 100.0
+            return self.goal_reward
         
         # Check if drone tried to move but couldn't (collision with wall/obstacle)
         if state.drone_pos == next_state.drone_pos and action.delta != (0, 0):
             return -100.0
         
-        # Stay action gets flat penalty
+        # Run A* from next_state to goal
+        steps, _, _ = self.pathfinder.find_path(
+            next_state.drone_pos,
+            next_state.goal,
+            next_state._obstacle_set
+        )
+        
+        # If no path exists (steps is very large), return large penalty
+        if steps >= 10000:
+            return self.no_path_penalty
+        
+        # Base reward is negative steps
+        reward = -float(steps)
+        
+        # Stay action gets additional -1 penalty (only when not at goal)
         if action.delta == (0, 0):
-            return -1.0
+            reward -= 1.0
         
-        # Progress-based reward: reward for getting closer to goal
-        dist_before = self._manhattan_distance(state.drone_pos, state.goal)
-        dist_after = self._manhattan_distance(next_state.drone_pos, next_state.goal)
-        progress = dist_before - dist_after  # Positive if closer, negative if farther
-        
-        # Base step cost + progress reward
-        return -1.0 + self.progress_weight * progress
+        return reward
 
 class GridPolicyModel(pomdp_py.PolicyModel):
     """Policy model that returns all valid actions for POMCP."""
@@ -358,38 +501,37 @@ class GridPolicyModel(pomdp_py.PolicyModel):
 
 class GridRolloutPolicy(pomdp_py.RolloutPolicy):
     """
-    Custom rollout policy with:
-    - Single-step greedy action selection
-    - Penalty for revisiting globally visited positions
+    A*-based rollout policy.
+    
+    Returns the action that A* recommends as the next step toward the goal.
+    This provides an informed rollout that follows the optimal path given
+    the current obstacle hypothesis.
     """
-    def __init__(self, actions, transition_model: GridTransitionModel, reward_model: GridRewardModel,
-                 global_visited: set = None, revisit_penalty: float = -10.0):
+    
+    def __init__(self, actions, pathfinder: AStarPathfinder):
+        """
+        Args:
+            actions: List of available actions
+            pathfinder: AStarPathfinder instance for computing paths
+        """
         self.actions = actions
-        self.transition_model = transition_model
-        self.reward_model = reward_model
-        self.global_visited = global_visited if global_visited is not None else set()
-        self.revisit_penalty = revisit_penalty
+        self.pathfinder = pathfinder
     
     def rollout(self, state, history=None):
         """
-        Return the action that maximizes immediate reward minus revisit penalty.
-        Depth-1 lookahead with penalty for visiting already-visited positions.
+        Return the action that A* suggests for reaching the goal.
+        
+        If no path exists or already at goal, returns 'stay' action.
         """
-        best_action = None
-        best_reward = float('-inf')
+        steps, next_node, next_action = self.pathfinder.find_path(
+            state.drone_pos,
+            state.goal,
+            state._obstacle_set
+        )
         
-        for action in self.actions:
-            # Simulate the next state
-            next_state = self.transition_model.sample(state, action)
-            # Calculate base reward for this action
-            reward = self.reward_model.sample(state, action, next_state)
-            
-            # Apply revisit penalty if the resulting position was already visited
-            if next_state.drone_pos in self.global_visited:
-                reward += self.revisit_penalty
-            
-            if reward > best_reward:
-                best_reward = reward
-                best_action = action
+        # If A* found a valid action, use it
+        if next_action is not None:
+            return next_action
         
-        return best_action if best_action is not None else random.choice(self.actions)
+        # If no path or already at goal, return stay action
+        return ACTIONS_DICT.get("stay", random.choice(self.actions))

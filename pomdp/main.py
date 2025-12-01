@@ -38,17 +38,8 @@ def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = Tr
     # Init Agent
     agent = RobotAgent(start_pos, goal_pos, DIRECTIONS)
     
-    # Global history of visited positions (shared with rollout policy)
-    global_visited = set()
-    
-    # Init Planner (POMCP)
-    transition_model = GridTransitionModel()
-    reward_model = GridRewardModel()
-    rollout_policy = GridRolloutPolicy(
-        ACTIONS, transition_model, reward_model,
-        global_visited=global_visited,
-        revisit_penalty=-10.0
-    )
+    # Init Planner (POMCP) - use shared pathfinder from agent
+    rollout_policy = GridRolloutPolicy(ACTIONS, agent.pathfinder)
     planner = pomdp_py.POMCP(
         max_depth=15, 
         exploration_const=5.0, 
@@ -61,9 +52,6 @@ def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = Tr
     
     # Mock Real World (The Truth)
     true_robot_pos = start_pos
-    
-    # Add starting position to visited set
-    global_visited.add(true_robot_pos)
     
     # Initialize visualizer
     viz = GridVisualizer(
@@ -94,10 +82,9 @@ def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = Tr
                 print("  -> Bonk! Hitting wall.")
         else:
             true_robot_pos = new_pos
-            global_visited.add(true_robot_pos)
             
         if verbose:
-            print(f"  -> True Pos: {true_robot_pos} (visited: {len(global_visited)} positions)")
+            print(f"  -> True Pos: {true_robot_pos}")
         
         # Update visualization
         viz.update(true_robot_pos, step=step+1, action_name=action.name)

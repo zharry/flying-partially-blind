@@ -1,13 +1,16 @@
 import random
 import pomdp_py
 from state_observation import *
-from config import GRID_WIDTH, GRID_HEIGHT, DIRECTIONS, NUM_BELIEF_PARTICLES
+from config import GRID_WIDTH, GRID_HEIGHT, DIRECTIONS
 
 class RobotAgent(pomdp_py.Agent):
     def __init__(self, init_pos: Coordinate, goal: Coordinate, directions):
         self.directions = directions
         self.goal = goal
         self.occupancy_grid = GlobalOccupancyGrid(GRID_WIDTH, GRID_HEIGHT)
+        
+        # Create shared A* pathfinder for reward model and rollout policy
+        self.pathfinder = AStarPathfinder(GRID_WIDTH, GRID_HEIGHT, ACTIONS)
         
         # Initialize belief: Robot knows where it is.
         # But map is empty (or 50/50). User said "initially no obstacles".
@@ -20,27 +23,22 @@ class RobotAgent(pomdp_py.Agent):
                          GridPolicyModel(ACTIONS),  # Custom policy model with all actions
                          GridTransitionModel(),
                          GridObservationModel(directions),
-                         GridRewardModel())
+                         GridRewardModel(self.pathfinder))
 
     def manual_belief_update(self, real_action: GridAction, real_observation: LidarObservation, 
-                             current_robot_pos: Coordinate, num_particles: int = NUM_BELIEF_PARTICLES,
-                             reinvigoration_ratio: float = 0.1) -> None:
+                             current_robot_pos: Coordinate) -> None:
         """
-        CRITICAL FUNCTION (OPTIMIZED):
+        Update belief particles based on new observation:
         1. Update Global Grid (Log Odds) based on Lidar.
-        2. FAST incremental resampling: only resample cells that changed.
-        3. Force all particles to be at 'current_robot_pos' (Perfect Localization).
-        
-        Args:
-            reinvigoration_ratio: Fraction of particles to sample from scratch (for diversity)
+        2. For each observed cell, update ALL particles in parallel:
+           - Sample whether obstacle exists based on cell probability
+           - Add/remove from particle's obstacle set
+        3. Update all particle positions to current_robot_pos (Perfect Localization).
         """
         
         # A. UPDATE GLOBAL MAP
-        # Signal start of new observation for change tracking
         self.occupancy_grid.begin_observation()
         
-        # We use the known ground-truth position (current_robot_pos) as the origin
-        # for the Lidar scan we just received.
         rx, ry = current_robot_pos.x, current_robot_pos.y
             
         # Map Lidar Beams to World Coordinates
@@ -53,35 +51,31 @@ class RobotAgent(pomdp_py.Agent):
                 cy += dy
                 
                 if 0 <= cx < GRID_WIDTH and 0 <= cy < GRID_HEIGHT:
-                    # UPDATE THE GLOBAL LOG-ODDS GRID
-                    # 1 = Blocked, 0 = Free
                     coord = Coordinate(cx, cy)
                     self.occupancy_grid.update(coord, is_blocked == 1)
 
-        # B. RESAMPLE PARTICLES (OPTIMIZED - Incremental + Reinvigoration)
-        new_particle_list = []
-        
-        # Get parent particles for incremental updates
+        # B. UPDATE ALL PARTICLES - For each observed cell, update all particles
         current_particles = list(self.belief.particles)
-        num_reinvigorate = max(1, int(num_particles * reinvigoration_ratio))
-        num_incremental = num_particles - num_reinvigorate
         
-        # B1. INCREMENTAL PARTICLES (FAST) - inherit from parents, only resample changed cells
-        for _ in range(num_incremental):
-            # Pick a random parent particle
-            parent = random.choice(current_particles)
-            
-            # Incremental sampling: only resample cells that changed in this observation
-            sampled_obstacles = self.occupancy_grid.sample_incremental(parent._obstacle_set)
-            
-            new_particle_list.append(GridState(current_robot_pos, sampled_obstacles, self.goal))
+        # Convert each particle's obstacles to a mutable set for efficient add/remove
+        particle_obstacle_sets = [set(p._obstacle_set) for p in current_particles]
         
-        # B2. REINVIGORATION PARTICLES (for diversity) - sample from scratch
-        for _ in range(num_reinvigorate):
-            # Full sampling from the global grid (sparse - only observed cells)
-            sampled_obstacles = self.occupancy_grid.sample_map_hypothesis()
+        # For each cell observed in this step, update all particles in parallel
+        for coord in self.occupancy_grid.last_updated_cells:
+            prob_occupied = self.occupancy_grid.get_probability(coord)
             
-            new_particle_list.append(GridState(current_robot_pos, sampled_obstacles, self.goal))
-            
-        # C. OVERRIDE BELIEF
+            # Update all particles for this cell
+            for obs_set in particle_obstacle_sets:
+                if random.random() < prob_occupied:
+                    obs_set.add(coord)
+                else:
+                    obs_set.discard(coord)
+        
+        # C. CREATE UPDATED PARTICLES with new position and updated obstacles
+        new_particle_list = [
+            GridState(current_robot_pos, list(obs_set), self.goal)
+            for obs_set in particle_obstacle_sets
+        ]
+        
+        # D. OVERRIDE BELIEF
         self.set_belief(pomdp_py.Particles(new_particle_list))
