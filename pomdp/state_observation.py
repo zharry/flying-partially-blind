@@ -445,7 +445,7 @@ class GridRewardModel(pomdp_py.RewardModel):
     - Stay action (not at goal): additional -1 penalty
     """
     
-    def __init__(self, pathfinder: AStarPathfinder, no_path_penalty: float = -1000.0,
+    def __init__(self, pathfinder: AStarPathfinder, no_path_penalty: float = -100.0,
                  goal_reward: float = 100.0):
         """
         Args:

@@ -42,7 +42,7 @@ def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = Tr
     rollout_policy = GridRolloutPolicy(ACTIONS, agent.pathfinder)
     planner = pomdp_py.POMCP(
         max_depth=15, 
-        exploration_const=5.0, 
+        exploration_const=0.0, 
         num_sims=500, 
         rollout_policy=rollout_policy
     )
