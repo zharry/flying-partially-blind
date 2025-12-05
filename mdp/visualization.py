@@ -56,7 +56,7 @@ def setup_live_plot(seed: int, mdp: DroneMDP = None):
     
     return fig, ax
 
-def update_live_plot(fig, ax, simulator: Simulator, reward: float, seed: int, mdp: DroneMDP = None):
+def update_live_plot(fig, ax, simulator: Simulator, reward: float, seed: int, mdp: DroneMDP = None, elapsed_time: float = 0):
     """Update the live plot with current drone path."""
     # Clear previous path lines and text annotations (but keep obstacles, goal, start, and optionally A* path)
     # Remove all lines, path markers, and text from previous updates
@@ -80,12 +80,21 @@ def update_live_plot(fig, ax, simulator: Simulator, reward: float, seed: int, md
         ax.scatter(drone_positions[:, 0], drone_positions[:, 1], 
                    c='cyan', s=50, marker='o', alpha=0.7, zorder=2)
         
+        # Add wind direction arrows at each position
+        for state in simulator.state_history:
+            wind = state.wind
+            pos = state.position
+            # Draw arrow from position pointing in wind direction (one unit long)
+            ax.quiver(pos[0], pos[1], wind[0], wind[1], 
+                     color='purple', alpha=0.5, scale=1, scale_units='xy',
+                     angles='xy', width=0.006, headwidth=3, headlength=4, zorder=1)
+        
         # Add reward labels on each node (starting from position 1, as position 0 has no reward)
         for i, reward_val in enumerate(simulator.reward_history):
             pos = drone_positions[i + 1]  # i+1 because reward_history[i] corresponds to transition to state[i+1]
             ax.text(pos[0], pos[1] + 0.5, f'{reward_val:.1f}', 
-                   fontsize=8, ha='center', va='bottom',
-                   bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7),
+                   fontsize=6, ha='center', va='bottom',
+                   bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.4),
                    zorder=7)
     
     # Highlight current position with larger marker
@@ -96,15 +105,15 @@ def update_live_plot(fig, ax, simulator: Simulator, reward: float, seed: int, md
                    linewidths=2, zorder=6, label='Current')
     
     # Update title with current stats
-    ax.set_title(f'Live Drone Path (Seed: {seed})\n'
-                 f'Step: {simulator.tick}, Battery: {simulator.state.battery}, '
-                 f'Reward: {reward:.2f}')
+    ax.set_title(f'Live Drone Path (Seed: {seed}), Time: {elapsed_time:.2f}s\n'
+                 f'Reward: {reward:.2f}, Cumulative Reward: {simulator.get_total_reward():.2f}\n'
+                 f'Step: {simulator.tick}, Battery: {simulator.state.battery}, Wind: [{simulator.state.wind[0]:.1f}, {simulator.state.wind[1]:.1f}]')
     
     plt.tight_layout()  # Adjust layout to prevent text cutoff
     plt.draw()
     plt.pause(0.01)  # Small pause to allow plot to update
 
-def visualize_path(simulator: Simulator, seed: int, mdp: DroneMDP = None):
+def visualize_path(simulator: Simulator, seed: int, mdp: DroneMDP = None, elapsed_time: float = 0):
     """Create a final detailed visualization of the complete drone path."""
     fig, ax = plt.subplots(figsize=(config.GRID_SIZE, config.GRID_SIZE))
     
@@ -145,12 +154,24 @@ def visualize_path(simulator: Simulator, seed: int, mdp: DroneMDP = None):
     ax.scatter(drone_positions[:, 0], drone_positions[:, 1], 
                c='cyan', s=50, marker='o', alpha=0.7, zorder=2)
     
+    # Add wind direction arrows at each position
+    wind_added_to_legend = False
+    for state in simulator.state_history:
+        wind = state.wind
+        pos = state.position
+        # Draw arrow from position pointing in wind direction (one unit long)
+        ax.quiver(pos[0], pos[1], wind[0], wind[1], 
+                 color='purple', alpha=0.5, scale=1, scale_units='xy',
+                 angles='xy', width=0.006, headwidth=3, headlength=4, zorder=1,
+                 label='Wind' if not wind_added_to_legend else '')
+        wind_added_to_legend = True
+    
     # Add reward labels on each node (starting from position 1, as position 0 has no reward)
     for i, reward_val in enumerate(simulator.reward_history):
         pos = drone_positions[i + 1]  # i+1 because reward_history[i] corresponds to transition to state[i+1]
         ax.text(pos[0], pos[1] + 0.5, f'{reward_val:.1f}', 
-               fontsize=8, ha='center', va='bottom',
-               bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7),
+               fontsize=6, ha='center', va='bottom',
+               bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.4),
                zorder=7)
     
     # Set plot limits and labels
@@ -158,7 +179,7 @@ def visualize_path(simulator: Simulator, seed: int, mdp: DroneMDP = None):
     ax.set_ylim(-0.5, config.GRID_SIZE - 0.5)
     ax.set_xlabel('X Position')
     ax.set_ylabel('Y Position')
-    ax.set_title(f'Drone Path Visualization (Seed: {seed})\nTotal Reward: {simulator.get_total_reward():.2f}\nTotal Steps: {len(simulator.state_history)}')
+    ax.set_title(f'Drone Path Visualization (Seed: {seed})\nTotal Reward: {simulator.get_total_reward():.2f}, Total Steps: {len(simulator.state_history)}, Time: {elapsed_time:.2f}s')
     ax.grid(True, alpha=0.3)
     ax.legend(loc='upper left')
     ax.set_aspect('equal', adjustable='box')

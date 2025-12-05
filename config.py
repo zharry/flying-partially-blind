@@ -28,7 +28,7 @@ BATTERY_DRAIN_RATE = 1   # Per time step
 WIND_MIN = -1            # Inclusive, See Below
 WIND_MAX = 1             # Inclusive, See Below
 # WIND = np.array([[0, 0] for _ in range(MAXIMUM_TIME_STEPS)])
-WIND = np.array([[rng.randint(WIND_MIN, WIND_MAX), rng.randint(WIND_MIN, WIND_MAX)] for _ in range(MAXIMUM_TIME_STEPS)])
+WIND = np.array([[rng.randint(WIND_MIN, WIND_MAX + 1), rng.randint(WIND_MIN, WIND_MAX + 1)] for _ in range(MAXIMUM_TIME_STEPS)])
 
 # Action bounds (acceleration, units/s^2)
 ACCEL_MIN = -2           # Inclusive

@@ -384,16 +384,12 @@ class DroneMDP:
         next_progress = (next_distance_along_path - next_bfs_distance) / self.shortest_path_distance
 
         # Current distance to goal using A* path
-        distance_reward_component = config.PROGRESS_REWARD_MULTIPLIER * (next_progress)
-        reward += distance_reward_component
-
-        # Penalty for moving backwards
-        if next_progress < current_progress:
-            reward += config.PROGRESS_REWARD_MULTIPLIER * (next_progress - current_progress) * 2
+        progress_delta = next_progress - current_progress
+        reward += config.PROGRESS_REWARD_MULTIPLIER * progress_delta
     
-        # Current distance to goal
+        # Euclidean distance to goal
         # distance_to_goal = np.linalg.norm(next_state.position - config.GOAL_POSITION)
-        # reward = config.PROGRESS_REWARD_MULTIPLIER / (
+        # reward += config.PROGRESS_REWARD_MULTIPLIER / (
         #     config.PROGRESS_REWARD_EPSILON + distance_to_goal
         # )
 
