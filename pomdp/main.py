@@ -1,13 +1,16 @@
+import sys
+sys.path.append("..")
+
 import argparse
-from state_observation import *
-from agent import *
+import pomdp_py
+
 from config import (
     DIRECTIONS, GRID_WIDTH, GRID_HEIGHT, 
     TestCase, TEST_CASES, get_test_case, list_test_cases
 )
+from agent import *
+from state_observation import *
 from visualization import GridVisualizer
-import pomdp_py
-
 
 def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = True):
     """
