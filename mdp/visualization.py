@@ -1,12 +1,13 @@
-# This file was  generated with Cursor/Claude 4.5 Sonnet
+# This file was generated with Cursor/Claude 4.5 Sonnet
 
 import numpy as np
 import matplotlib.pyplot as plt
 
 import config
 from mdp.simulator import Simulator
+from mdp.drone import DroneMDP
 
-def setup_live_plot(seed: int):
+def setup_live_plot(seed: int, mdp: DroneMDP = None):
     """Set up the initial plot for live visualization."""
     fig, ax = plt.subplots(figsize=(config.GRID_SIZE, config.GRID_SIZE))
 
@@ -31,6 +32,14 @@ def setup_live_plot(seed: int):
     ax.scatter(config.STARTING_POSITION[0][0], config.STARTING_POSITION[0][1], 
                c='blue', s=150, marker='o', label='Start', zorder=5)
     
+    # Plot A* path if available
+    if mdp is not None and len(mdp.shortest_path) > 1:
+        path_positions = np.array(mdp.shortest_path)
+        ax.plot(path_positions[:, 0], path_positions[:, 1], 
+                'g--', linewidth=2, alpha=0.5, label='A* Path', zorder=1)
+        ax.scatter(path_positions[:, 0], path_positions[:, 1], 
+                   c='lightgreen', s=30, marker='s', alpha=0.5, zorder=1)
+    
     # Set plot limits and labels
     ax.set_xlim(-0.5, config.GRID_SIZE - 0.5)
     ax.set_ylim(-0.5, config.GRID_SIZE - 0.5)
@@ -47,11 +56,14 @@ def setup_live_plot(seed: int):
     
     return fig, ax
 
-def update_live_plot(fig, ax, simulator: Simulator, reward: float, seed: int):
+def update_live_plot(fig, ax, simulator: Simulator, reward: float, seed: int, mdp: DroneMDP = None):
     """Update the live plot with current drone path."""
-    # Clear previous path lines and text annotations (but keep obstacles, goal, start)
+    # Clear previous path lines and text annotations (but keep obstacles, goal, start, and optionally A* path)
     # Remove all lines, path markers, and text from previous updates
-    for artist in ax.lines + ax.collections[3:]:  # Keep first 3 collections (obstacles, goal, start)
+    num_keep = 3  # obstacles, goal, start
+    if mdp is not None and len(mdp.shortest_path) > 1:
+        num_keep = 5  # also keep A* path line and markers
+    for artist in ax.lines + ax.collections[num_keep:]:
         artist.remove()
     
     # Remove text annotations
@@ -92,7 +104,7 @@ def update_live_plot(fig, ax, simulator: Simulator, reward: float, seed: int):
     plt.draw()
     plt.pause(0.01)  # Small pause to allow plot to update
 
-def visualize_path(simulator: Simulator, seed: int):
+def visualize_path(simulator: Simulator, seed: int, mdp: DroneMDP = None):
     """Create a final detailed visualization of the complete drone path."""
     fig, ax = plt.subplots(figsize=(config.GRID_SIZE, config.GRID_SIZE))
     
@@ -118,6 +130,14 @@ def visualize_path(simulator: Simulator, seed: int):
     # Plot starting position as blue circle
     ax.scatter(drone_positions[0, 0], drone_positions[0, 1], 
                c='blue', s=150, marker='o', label='Start', zorder=5)
+    
+    # Plot A* path if available
+    if mdp is not None and len(mdp.shortest_path) > 1:
+        path_positions = np.array(mdp.shortest_path)
+        ax.plot(path_positions[:, 0], path_positions[:, 1], 
+                'g--', linewidth=2, alpha=0.5, label='A* Path', zorder=1)
+        ax.scatter(path_positions[:, 0], path_positions[:, 1], 
+                   c='lightgreen', s=30, marker='s', alpha=0.5, zorder=1)
     
     # Plot drone path as a line with markers
     ax.plot(drone_positions[:, 0], drone_positions[:, 1], 

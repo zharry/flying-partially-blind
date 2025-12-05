@@ -1,4 +1,3 @@
-import random
 import sys
 sys.path.append("..")
 
@@ -51,24 +50,16 @@ class RolloutPlanner:
         current_tick = tick
         total_return = 0.0
         discount = 1.0
+        depth = 0
         
-        # Take the first action
-        next_state = self.mdp.transition(current_tick + 1, current_state, first_action)
-        reward = self.mdp.reward(current_state, first_action, next_state)
-        total_return += discount * reward
-        current_state = next_state
-        current_tick += 1
-        discount = self.discount
-        depth = 1
-
-        # Continue with base policy
         while (not current_state.is_terminal() and
                depth < self.max_depth):
+            if depth == 0:
+                action = first_action
+            else:
+                action = self.base_policy.select_action(current_state, current_tick, self.rng)
             
-            # Get action from base policy
-            action = self.base_policy.select_action(current_state, current_tick, self.rng)
-            
-            # Take the next action
+            # Take the action
             next_state = self.mdp.transition(current_tick + 1, current_state, action)
             reward = self.mdp.reward(current_state, action, next_state)
             total_return += discount * reward
@@ -114,12 +105,64 @@ class GreedyPolicy:
         return DroneAction(rounded_acceleration)
 
 class RandomGreedyPolicy:
-    # 50% Chance to select greedy action
-    # 50% Chance to select random action
     @staticmethod
     def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
-        choice = rng.randint(1, 3)
-        if choice == 1:
-            return GreedyPolicy.select_action(state, tick, rng)
-        else:
+        if rng.random() < 0.5:
             return RandomPolicy.select_action(state, tick, rng)
+        else:
+            return GreedyPolicy.select_action(state, tick, rng)
+
+
+class AStarPolicy:
+    @staticmethod
+    def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
+        # Get the A* path and MDP from the main module
+        main_module = sys.modules['__main__']
+        mdp = main_module.mdp
+        path = mdp.shortest_path
+        
+        # Find the closest reachable point on the path using BFS
+        _, distance_along_path = mdp._astar_path_get_closest_point_on_path_with_bfs(state.position)
+        
+        # Convert distance_along_path to a path index
+        cumulative_distance = 0.0
+        closest_idx = 0
+        for i in range(len(path) - 1):
+            segment_length = np.linalg.norm(path[i + 1] - path[i])
+            if cumulative_distance + segment_length >= distance_along_path:
+                closest_idx = i
+                break
+            cumulative_distance += segment_length
+        else:
+            # If we've gone through all segments, we're at the end
+            closest_idx = len(path) - 1
+        
+        # Look ahead on the path (target a waypoint ahead of our closest point)
+        lookahead_distance = config.ASTAR_LOOKAHEAD_DISTANCE
+        target_idx = min(closest_idx + lookahead_distance, len(path) - 1)
+        target_waypoint = path[target_idx]
+        
+        # Calculate direction to target waypoint
+        direction_to_target = target_waypoint - state.position
+        distance = np.linalg.norm(direction_to_target)
+
+        if distance <= 0:
+            return DroneAction(np.array([0, 0]))
+
+        # Calculate desired velocity to reach target
+        direction_unit = direction_to_target / distance
+        desired_velocity = direction_unit * min(config.VELOCITY_MAX, distance)
+        
+        # Calculate desired acceleration accounting for current velocity and wind
+        desired_acceleration = desired_velocity - state.velocity - state.wind
+        
+        # Clip to valid acceleration range and round
+        clipped_acceleration = np.clip(
+            desired_acceleration,
+            config.ACCEL_MIN,
+            config.ACCEL_MAX
+        )
+        rounded_acceleration = np.round(clipped_acceleration).astype(int)
+        
+        return DroneAction(rounded_acceleration)
+
