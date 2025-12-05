@@ -20,8 +20,8 @@ BATTERY_DRAIN_RATE = 1   # Per time step
 # Wind parameters (units/s)
 WIND_MIN = -1            # Inclusive, See Below
 WIND_MAX = 1             # Inclusive, See Below
-WIND = np.array([[0, 0] for _ in range(MAXIMUM_TIME_STEPS)])
-# WIND = np.array([[rng.randint(WIND_MIN, WIND_MAX), rng.randint(WIND_MIN, WIND_MAX)] for _ in range(MAXIMUM_TIME_STEPS)])
+# WIND = np.array([[0, 0] for _ in range(MAXIMUM_TIME_STEPS)])
+WIND = np.array([[rng.randint(WIND_MIN, WIND_MAX), rng.randint(WIND_MIN, WIND_MAX)] for _ in range(MAXIMUM_TIME_STEPS)])
 
 # Action bounds (acceleration, units/s^2)
 ACCEL_MIN = -2           # Inclusive
@@ -50,7 +50,7 @@ STEP_PENALTY = 0
 
 # Threshold parameters
 GOAL_THRESHOLD = 0.25      # Distance threshold to consider goal reached, should not be exactly 0
-OBSTACLE_THRESHOLD = 0.50  # Radius around obstacle for collision, should not be exactly 0
+OBSTACLE_THRESHOLD = 1.0  # Radius around obstacle for collision, should not be exactly 0
 
 # A* parameters
 ASTAR_LOOKAHEAD_DISTANCE = 5        # Number of waypoints to look ahead
@@ -66,7 +66,7 @@ ROLLOUT_MAX_DEPTH = 15
 # Multi-agent parameters
 NUM_AGENTS = 2                       # Number of agents in the system
 AGENT_COLLISION_THRESHOLD = 0.25     # Distance threshold for agent-agent collision, should not be exactly 0
-AGENT_COLLISION_PENALTY = -1000      # Penalty for colliding with another agent, should not be exactly 0
+AGENT_COLLISION_PENALTY = -10000      # Penalty for colliding with another agent, should not be exactly 0
 
 # Multi-agent goal positions, must have length NUM_AGENTS
 MULTI_AGENT_GOAL_POSITIONS = np.array([
