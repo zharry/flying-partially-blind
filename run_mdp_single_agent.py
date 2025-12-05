@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 
 import config
 from policy.rollout import RolloutPlanner, RandomPolicy, GreedyPolicy, RandomGreedyPolicy, AStarPolicy
@@ -101,6 +102,9 @@ def main():
     else:
         fig, ax = None, None
 
+    # Start timing
+    start_time = time.time()
+
     while not simulator.is_done():
         action, value = planner.select_action(simulator.state, simulator.tick)
         print(f"planner.select_action - Tick: {simulator.tick}, State: {simulator.state}, Action: {action}, Expected Value: {value}")
@@ -112,23 +116,19 @@ def main():
         
         # Update visualization after each step
         if config.LIVE_UPDATE:
-            update_live_plot(fig, ax, simulator, reward, seed, mdp)
+            elapsed_time = time.time() - start_time
+            update_live_plot(fig, ax, simulator, reward, seed, mdp, elapsed_time)
+
+    # End timing
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    print(f"Total Reward: {simulator.get_total_reward()}")
+    print(f"Simulation Time: {elapsed_time:.2f} seconds")
 
     if config.LIVE_UPDATE:
         plt.ioff()  # Turn off interactive mode
-    visualize_path(simulator, seed, mdp)  # Show final plot
-    
-    print(f"Total Reward: {simulator.get_total_reward()}")
-
-    # Print summary
-    # print("\n" + "=" * 60)
-    # print("SIMULATION SUMMARY")
-    # print("=" * 60)
-    # print(f"Test Case: {result['test_case']}")
-    # print(f"Result: {'SUCCESS ✓' if result['success'] else 'FAILED ✗'}")
-    # print(f"Steps: {result['steps']}")
-    # print(f"Final Position: {result['final_position']}")
-    # print("=" * 60)
+    visualize_path(simulator, seed, mdp, elapsed_time)  # Show final plot
 
 if __name__ == "__main__":
     configure()
