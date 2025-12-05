@@ -3,16 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import config
-from policy.rollout import RolloutPlanner, RandomPolicy, GreedyPolicy, RandomGreedyPolicy
+from policy.rollout import RolloutPlanner, RandomPolicy, GreedyPolicy, RandomGreedyPolicy, AStarPolicy
 from mdp.simulator import Simulator
 from mdp.visualization import setup_live_plot, update_live_plot, visualize_path
 from mdp.drone import DroneMDP
 from drone.state import DroneState
 from drone.action import DroneAction
 
-seed = random.randint(0, 1000)
+seed = config.seed
+mdp = None
 
 def main():
+    global mdp
     mdp = DroneMDP()
     initial_state = DroneState(
         position=config.STARTING_POSITION[0], 
@@ -27,7 +29,7 @@ def main():
     )
     planner = RolloutPlanner(
         mdp=mdp, 
-        base_policy=RandomGreedyPolicy,
+        base_policy=AStarPolicy,
         num_rollouts=config.ROLLOUT_NUM_ROLLOUTS, 
         max_depth=config.ROLLOUT_MAX_DEPTH, 
         seed=seed
@@ -36,7 +38,7 @@ def main():
     # Set up live visualization
     if config.LIVE_UPDATE:
         plt.ion()  # Turn on interactive mode
-        fig, ax = setup_live_plot(seed)
+        fig, ax = setup_live_plot(seed, mdp)
     else:
         fig, ax = None, None
 
@@ -51,11 +53,11 @@ def main():
         
         # Update visualization after each step
         if config.LIVE_UPDATE:
-            update_live_plot(fig, ax, simulator, reward, seed)
+            update_live_plot(fig, ax, simulator, reward, seed, mdp)
 
     if config.LIVE_UPDATE:
         plt.ioff()  # Turn off interactive mode
-    visualize_path(simulator, seed)  # Show final plot
+    visualize_path(simulator, seed, mdp)  # Show final plot
     
     print(f"Total Reward: {simulator.get_total_reward()}")
 
