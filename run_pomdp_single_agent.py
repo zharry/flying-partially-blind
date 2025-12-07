@@ -1,6 +1,3 @@
-import sys
-sys.path.append("..")
-
 import argparse
 import pomdp_py
 
@@ -8,9 +5,9 @@ from config import (
     DIRECTIONS, GRID_WIDTH, GRID_HEIGHT, 
     TestCase, TEST_CASES, get_test_case, list_test_cases
 )
-from agent import *
-from state_observation import *
-from visualization import GridVisualizer
+from pomdp.agent import *
+from pomdp.state_observation import *
+from pomdp.visualization import GridVisualizer
 
 def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = True):
     """

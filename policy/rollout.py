@@ -73,8 +73,7 @@ class RolloutPlanner:
 
 class RandomPolicy:
     # Random Policy uniformly samples from action space
-    @staticmethod
-    def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
+    def select_action(self, state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
         all_actions = DroneAction.get_action_space()
         action_idx = rng.randint(0, len(all_actions))
         return all_actions[action_idx]
@@ -82,8 +81,7 @@ class RandomPolicy:
 
 class GreedyPolicy:
     # Heuristic Policy that moves towards goal
-    @staticmethod
-    def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
+    def select_action(self, state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
         # Calculate direction to goal
         direction_to_goal = config.GOAL_POSITION - state.position
         distance = np.linalg.norm(direction_to_goal)
@@ -105,8 +103,7 @@ class GreedyPolicy:
         return DroneAction(rounded_acceleration)
 
 class RandomGreedyPolicy:
-    @staticmethod
-    def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
+    def select_action(self, state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
         if rng.random() < 0.5:
             return RandomPolicy.select_action(state, tick, rng)
         else:
@@ -114,11 +111,16 @@ class RandomGreedyPolicy:
 
 
 class AStarPolicy:
-    @staticmethod
-    def select_action(state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
-        # Get the A* path and MDP from the main module
-        main_module = sys.modules['__main__']
-        mdp = main_module.mdp
+    def __init__(self):
+        print(f"Creating A* path:")
+        print(f"  Start: {config.STARTING_POSITION[0]}, Goal: {config.GOAL_POSITION}")
+        print(f"  Obstacles shape: {config.OBSTACLES.shape}, Clearance: {config.ASTAR_OBSTACLE_CLEARANCE}")
+        self.mdp = DroneMDP()
+        print(f"  A* path length: {len(self.mdp.shortest_path)}, Path distance: {self.mdp.shortest_path_distance:.2f}")
+        print()
+
+    def select_action(self, state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
+        mdp = self.mdp
         path = mdp.shortest_path
         
         # Find the closest reachable point on the path using BFS

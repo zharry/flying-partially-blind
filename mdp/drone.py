@@ -386,6 +386,11 @@ class DroneMDP:
         # Current distance to goal using A* path
         progress_delta = next_progress - current_progress
         reward += config.PROGRESS_REWARD_MULTIPLIER * progress_delta
+
+        # Deviation penalty
+        deviation_delta = next_bfs_distance - current_bfs_distance
+        if next_bfs_distance > config.ASTAR_MAX_DEVIATION:
+            reward += config.ASTAR_DEVIATION_PENALTY * deviation_delta
     
         # Euclidean distance to goal
         # distance_to_goal = np.linalg.norm(next_state.position - config.GOAL_POSITION)
