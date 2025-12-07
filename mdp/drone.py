@@ -377,32 +377,31 @@ class DroneMDP:
     def calculate_progress_reward(self, state: DroneState, next_state: DroneState) -> float:
         reward = 0.0
 
+        # A* Path Progress to Goal
         # Get distance from path for next state
         current_bfs_distance, current_distance_along_path = self._astar_path_get_closest_point_on_path_with_bfs(state.position)
         next_bfs_distance, next_distance_along_path = self._astar_path_get_closest_point_on_path_with_bfs(next_state.position)
         current_progress = (current_distance_along_path - current_bfs_distance) / self.shortest_path_distance
         next_progress = (next_distance_along_path - next_bfs_distance) / self.shortest_path_distance
-
         # Current distance to goal using A* path
         progress_delta = next_progress - current_progress
         reward += config.PROGRESS_REWARD_MULTIPLIER * progress_delta
-
         # Deviation penalty
         deviation_delta = next_bfs_distance - current_bfs_distance
         if next_bfs_distance > config.ASTAR_MAX_DEVIATION:
             reward += config.ASTAR_DEVIATION_PENALTY * deviation_delta
     
-        # Euclidean distance to goal
+        # Euclidean Distance to goal
         # distance_to_goal = np.linalg.norm(next_state.position - config.GOAL_POSITION)
         # reward += config.PROGRESS_REWARD_MULTIPLIER / (
         #     config.PROGRESS_REWARD_EPSILON + distance_to_goal
         # )
 
-        # Difference in distance to goal
+        # Euclidean Progress to Goal
         # old_distance = np.linalg.norm(state.position - config.GOAL_POSITION)
         # new_distance = np.linalg.norm(next_state.position - config.GOAL_POSITION)
         # reward = config.PROGRESS_REWARD_MULTIPLIER * (old_distance - new_distance)
-        return reward
+        # return reward
     
     @staticmethod
     def clip_int(value: int, min_value: int, max_value: int) -> int:

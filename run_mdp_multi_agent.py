@@ -33,7 +33,30 @@ def configure():
         choices=["easy", "medium", "hard"],
         help="Filter test cases by difficulty (used with --list)"
     )
-
+    parser.add_argument(
+        "--seed", "-s",
+        type=int,
+        default=config.seed,
+        help=f"Random seed for simulation (default: random)"
+    )
+    parser.add_argument(
+        "--wind", "-w",
+        action="store_true",
+        default=config.WIND_ENABLE,
+        help=f"Enable wind effects during simulation (default: {config.WIND_ENABLE})"
+    )
+    parser.add_argument(
+        "--max-velocity", "-v",
+        type=int,
+        default=config.VELOCITY_MAX,
+        help=f"Maximum velocity (default: {config.VELOCITY_MAX})"
+    )
+    parser.add_argument(
+        "--max-acceleration", "-a",
+        type=int,
+        default=config.ACCEL_MAX,
+        help=f"Maximum acceleration (default: {config.ACCEL_MAX})"
+    )
     # To configure max steps see config.py for simulation and MDP parameters
     # parser.add_argument(
     #     "--max-steps", "-m",
@@ -41,7 +64,6 @@ def configure():
     #     default=500,
     #     help="Maximum number of simulation steps"
     # )
-
     # Quiet mode is not support for multi agent MDP
     # parser.add_argument(
     #     "--quiet", "-q",
@@ -50,6 +72,39 @@ def configure():
     # )
     
     args = parser.parse_args()
+    
+    # Apply configuration overrides
+    if args.seed is not None:
+        global seed
+        seed = args.seed
+        config.seed = args.seed
+        config.rng = np.random.RandomState(args.seed)
+        # Regenerate wind with new seed
+        config.WIND = np.array([[config.rng.randint(config.WIND_MIN, config.WIND_MAX + 1), 
+                                config.rng.randint(config.WIND_MIN, config.WIND_MAX + 1)] 
+                               for _ in range(config.MAXIMUM_TIME_STEPS)])
+        # Regenerate obstacles with new seed
+        config.OBSTACLES = config.rng.randint(0, config.GRID_SIZE, size=(40, 2))
+        config.MAX_OBSTACLES = config.OBSTACLES.shape[0]
+    
+    if not args.wind:
+        config.WIND = np.array([[0, 0] for _ in range(config.MAXIMUM_TIME_STEPS)])
+
+    if args.max_velocity is not None:
+        config.VELOCITY_MAX = args.max_velocity
+        config.VELOCITY_MIN = -args.max_velocity
+    
+    if args.max_acceleration is not None:
+        config.ACCEL_MAX = args.max_acceleration
+        config.ACCEL_MIN = -args.max_acceleration
+
+    print("Parsed Configuration:")
+    print(f"  Seed: {config.seed}")
+    print(f"  Wind Enabled: {config.WIND_ENABLE}")
+    print(f"  Velocity: {config.VELOCITY_MAX}, {config.VELOCITY_MIN}")
+    print(f"  Acceleration: {config.ACCEL_MAX}, {config.ACCEL_MIN}")
+    print(f"  Max Steps: {config.MAXIMUM_TIME_STEPS}")
+    print()
     
     # List mode
     if args.list:
@@ -77,7 +132,7 @@ def configure():
 
 def main():
     mdp = MultiAgentDroneMDP()
-    base_policy = AStarPolicy()
+    base_policy = RandomPolicy()
     
     agent_states = []
     for agent_id in range(config.NUM_AGENTS):

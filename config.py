@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass
 from typing import List, Tuple
 
-seed = 238 # random.randint(0, 1000)
+seed = random.randint(0, 1000)
 rng = np.random.RandomState(seed)
 
 # =============================================================================
@@ -15,24 +15,24 @@ rng = np.random.RandomState(seed)
 GRID_SIZE = 40            # Zero-indexed, non-inclusive
 MAXIMUM_TIME_STEPS = 100  # Zero-indexed, non-inclusive, no more than 100 (otherwise edit wind array)
 
-# Velocity bounds (units/s)
-VELOCITY_MIN = -5        # Inclusive
-VELOCITY_MAX = 5         # Inclusive
-
 # Battery parameters
 BATTERY_MIN = 0          # Inclusive
 BATTERY_MAX = 95         # Inclusive, no more than MAXIMUM_TIME_STEPS
 BATTERY_DRAIN_RATE = 1   # Per time step
 
 # Wind parameters (units/s)
-WIND_MIN = -1            # Inclusive, See Below
-WIND_MAX = 1             # Inclusive, See Below
-# WIND = np.array([[0, 0] for _ in range(MAXIMUM_TIME_STEPS)])
+# Inclusive
+WIND_ENABLE = False
+WIND_MIN = -1
+WIND_MAX = 1
 WIND = np.array([[rng.randint(WIND_MIN, WIND_MAX + 1), rng.randint(WIND_MIN, WIND_MAX + 1)] for _ in range(MAXIMUM_TIME_STEPS)])
 
-# Action bounds (acceleration, units/s^2)
-ACCEL_MIN = -2           # Inclusive
-ACCEL_MAX = 2            # Inclusive
+# Velocity, Acceleration bounds (units/s) and (units/s^2)
+# Inclusive
+VELOCITY_MIN = -5
+VELOCITY_MAX = 5
+ACCEL_MIN = -2
+ACCEL_MAX = 2
 
 # =============================================================================
 # MDP SINGLE AGENT CONFIGURATION
@@ -279,12 +279,11 @@ EASY_SCATTERED_OBSTACLES = TestCase(
     multi_agent_start_pos=[(5, 5)],
     multi_agent_goal_pos=[(35, 35)],
     obstacles = [
-        (x, y)
-        for x, y in (
-            map(tuple, rng.randint(0, GRID_SIZE, size=(80, 2)))  # over-sample, will select first 40 valid
-        )
-        if not (2 <= x <= 7 and 2 <= y <= 7) and not (32 <= x <= 37 and 32 <= y <= 37)
-    ][:40],
+        (1, 15), (4, 9), (8, 12), (10, 23), (12, 26), (13, 5), (15, 11), (16, 17), (18, 14), (19, 26),
+        (20, 16), (22, 6), (23, 17), (24, 8), (25, 34), (28, 19), (29, 12), (30, 4), (31, 28), (33, 24),
+        (12, 33), (17, 27), (21, 2), (27, 31), (5, 20), (7, 23), (6, 28), (38, 12), (36, 25), (14, 28),
+        (11, 18), (9, 33), (28, 21), (32, 11), (16, 8), (18, 36), (25, 7), (35, 2), (22, 15), (38, 29)
+    ],
     description="Open field with random scattered obstacles"
 )
 
