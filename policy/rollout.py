@@ -105,9 +105,9 @@ class GreedyPolicy:
 class RandomGreedyPolicy:
     def select_action(self, state: DroneState, tick: int, rng: np.random.RandomState) -> DroneAction:
         if rng.random() < 0.5:
-            return RandomPolicy.select_action(state, tick, rng)
+            return RandomPolicy().select_action(state, tick, rng)
         else:
-            return GreedyPolicy.select_action(state, tick, rng)
+            return GreedyPolicy().select_action(state, tick, rng)
 
 
 class AStarPolicy:

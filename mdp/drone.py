@@ -400,8 +400,9 @@ class DroneMDP:
         # Euclidean Progress to Goal
         # old_distance = np.linalg.norm(state.position - config.GOAL_POSITION)
         # new_distance = np.linalg.norm(next_state.position - config.GOAL_POSITION)
-        # reward = config.PROGRESS_REWARD_MULTIPLIER * (old_distance - new_distance)
-        # return reward
+        # reward += config.PROGRESS_REWARD_MULTIPLIER * (old_distance - new_distance)
+        
+        return reward
     
     @staticmethod
     def clip_int(value: int, min_value: int, max_value: int) -> int:

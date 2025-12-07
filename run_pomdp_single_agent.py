@@ -1,15 +1,15 @@
 import argparse
 import pomdp_py
+import numpy as np
 
-from config import (
-    DIRECTIONS, GRID_WIDTH, GRID_HEIGHT, 
-    TestCase, TEST_CASES, get_test_case, list_test_cases
-)
+import config
 from pomdp.agent import *
 from pomdp.state_observation import *
 from pomdp.visualization import GridVisualizer
 
-def run_simulation(test_case: TestCase, max_steps: int = 500, verbose: bool = True):
+seed = config.seed
+
+def run_simulation(test_case: config.TestCase, max_steps: int = 500, verbose: bool = True):
     """
     Run the POMDP drone simulation with a given test case.
     
@@ -142,6 +142,31 @@ def main():
         help="Filter test cases by difficulty (used with --list)"
     )
     parser.add_argument(
+        "--seed", "-s",
+        type=int,
+        default=config.seed,
+        help=f"Random seed for simulation (default: random)"
+    )
+    # Wind, velocity, and acceleration are not supported for POMDP
+    # parser.add_argument(
+    #     "--wind", "-w",
+    #     action="store_true",
+    #     default=config.WIND_ENABLE,
+    #     help=f"Enable wind effects during simulation (default: {config.WIND_ENABLE})"
+    # )
+    # parser.add_argument(
+    #     "--max-velocity", "-v",
+    #     type=int,
+    #     default=config.VELOCITY_MAX,
+    #     help=f"Maximum velocity (default: {config.VELOCITY_MAX})"
+    # )
+    # parser.add_argument(
+    #     "--max-acceleration", "-a",
+    #     type=int,
+    #     default=config.ACCEL_MAX,
+    #     help=f"Maximum acceleration (default: {config.ACCEL_MAX})"
+    # )
+    parser.add_argument(
         "--max-steps", "-m",
         type=int,
         default=500,
@@ -155,19 +180,32 @@ def main():
     
     args = parser.parse_args()
     
+    # Apply configuration overrides
+    if args.seed is not None:
+        global seed
+        seed = args.seed
+
+    print("Parsed Configuration:")
+    print(f"  Seed: {config.seed}")
+    print(f"  Wind Enabled: {config.WIND_ENABLE}")
+    print(f"  Velocity: {config.VELOCITY_MAX}, {config.VELOCITY_MIN}")
+    print(f"  Acceleration: {config.ACCEL_MAX}, {config.ACCEL_MIN}")
+    print(f"  Max Steps: {config.MAXIMUM_TIME_STEPS}")
+    print()
+    
     # List mode
     if args.list:
         print("\nAvailable Test Cases:")
         print("-" * 60)
-        for name in list_test_cases(args.difficulty):
-            tc = TEST_CASES[name]
+        for name in config.list_test_cases(args.difficulty):
+            tc = config.TEST_CASES[name]
             print(f"  [{tc.difficulty:6}] {name:25} - {tc.description[:40]}...")
         print()
         return
     
     # Run simulation
     try:
-        test_case = get_test_case(args.test_case)
+        test_case = config.get_test_case(args.test_case)
     except ValueError as e:
         print(f"Error: {e}")
         print("\nUse --list to see available test cases")

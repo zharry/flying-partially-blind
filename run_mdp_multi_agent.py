@@ -132,7 +132,7 @@ def configure():
 
 def main():
     mdp = MultiAgentDroneMDP()
-    base_policy = RandomPolicy()
+    base_policy = AStarPolicy()
     
     agent_states = []
     for agent_id in range(config.NUM_AGENTS):

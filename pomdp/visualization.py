@@ -3,15 +3,20 @@ Visualization module for POMDP drone navigation.
 Uses matplotlib to display grid, obstacles, and robot movement.
 """
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from matplotlib.colors import LinearSegmentedColormap
 import numpy as np
+
+# Try to import config for plot size, fall back to default if not available
+try:
+    import config
+    PLOT_FIGURE_SIZE = config.PLOT_FIGURE_SIZE
+except:
+    PLOT_FIGURE_SIZE = 1500
 
 class GridVisualizer:
     """Real-time visualization of robot navigation on a grid."""
     
     def __init__(self, grid_width: int, grid_height: int, obstacles: list, goal, 
-                 cell_size: float = 1.0):
+                 start_pos=None, cell_size: float = 1.0):
         """
         Initialize the visualizer.
         
@@ -20,16 +25,23 @@ class GridVisualizer:
             grid_height: Height of the grid  
             obstacles: List of Coordinate objects representing obstacles
             goal: Coordinate object for goal position
+            start_pos: Starting position (Coordinate object)
             cell_size: Size of each cell for display
         """
         self.grid_width = grid_width
         self.grid_height = grid_height
         self.obstacles = obstacles
         self.goal = goal
+        self.start_pos = start_pos
         self.cell_size = cell_size
         
-        # Track path history
+        # Track path history and rewards
         self.path_history = []
+        self.reward_history = []
+        self.first_position_received = False
+        
+        # Initialize list to store dynamic artists for cleanup
+        self._dynamic_artists = []
         
         # Setup the plot
         self._setup_plot()
@@ -38,109 +50,64 @@ class GridVisualizer:
         """Initialize matplotlib figure and axes."""
         plt.ion()  # Enable interactive mode
         
-        # Scale figure size based on grid dimensions (cap at reasonable size)
-        fig_size = min(12, max(8, self.grid_width // 4))
+        # Create figure matching MDP style
+        self.fig, self.ax = plt.subplots(figsize=(self.grid_width, self.grid_height))
         
-        # Create figure with dark theme
-        self.fig, self.ax = plt.subplots(figsize=(fig_size, fig_size), facecolor='#1a1a2e')
-        self.ax.set_facecolor('#16213e')
+        # Set plot size
+        self.fig.set_size_inches(PLOT_FIGURE_SIZE / self.fig.dpi, PLOT_FIGURE_SIZE / self.fig.dpi)
         
-        # Set axis limits and aspect
+        # Plot obstacles as red circles (matching MDP style)
+        if len(self.obstacles) > 0:
+            obstacle_positions = np.array([(obs.x, obs.y) for obs in self.obstacles])
+            points_per_grid_unit = PLOT_FIGURE_SIZE / self.grid_width
+            # Use a fixed obstacle threshold similar to MDP (1.0)
+            obstacle_threshold = 1.0
+            obstacle_marker_size = ((obstacle_threshold * points_per_grid_unit) ** 2) / 2
+            self.ax.scatter(
+                obstacle_positions[:, 0], obstacle_positions[:, 1],
+                c='red', s=obstacle_marker_size, marker='o',
+                label='Obstacles', zorder=3, alpha=0.6
+            )
+        
+        # Plot goal as green star (matching MDP style)
+        self.ax.scatter(self.goal.x, self.goal.y, 
+                       c='green', s=300, marker='*', label='Goal', zorder=4, alpha=0.8,
+                       edgecolors='blue', linewidths=2)
+        
+        # Initialize starting position marker (will be updated on first position)
+        self.start_scatter = self.ax.scatter([], [], c='blue', s=150, marker='o', 
+                                            label='Start', zorder=5, alpha=0.8,
+                                            edgecolors='black', linewidths=1.5)
+        
+        # If start_pos provided, show it immediately
+        if self.start_pos is not None:
+            self.start_scatter.set_offsets([[self.start_pos.x, self.start_pos.y]])
+        
+        # Initialize path line (matching MDP style - blue line with cyan markers)
+        self.path_line, = self.ax.plot([], [], color='blue', linewidth=2, alpha=0.6, 
+                                        label='Drone Path', zorder=2)
+        self.path_scatter = self.ax.scatter([], [], c='cyan', s=50, marker='o', alpha=0.7, 
+                                            zorder=2, edgecolors='blue', linewidths=0.5)
+        
+        # Initialize current position marker (orange, matching MDP style)
+        self.robot_scatter = self.ax.scatter([], [], c='orange', s=200, marker='o', 
+                                            edgecolors='black', linewidths=2, zorder=6)
+        
+        # Set plot limits and labels (matching MDP style)
         self.ax.set_xlim(-0.5, self.grid_width - 0.5)
         self.ax.set_ylim(-0.5, self.grid_height - 0.5)
-        self.ax.set_aspect('equal')
-        
-        # Draw grid lines (reduce density for large grids)
-        grid_step = 1 if self.grid_width <= 20 else (5 if self.grid_width <= 50 else 10)
-        line_alpha = 0.7 if self.grid_width <= 20 else 0.4
-        
-        for i in range(0, self.grid_width + 1, grid_step):
-            self.ax.axvline(x=i - 0.5, color='#0f3460', linewidth=0.5, alpha=line_alpha)
-        for i in range(0, self.grid_height + 1, grid_step):
-            self.ax.axhline(y=i - 0.5, color='#0f3460', linewidth=0.5, alpha=line_alpha)
-        
-        # Scale sizes based on grid size for visibility
-        is_large_grid = self.grid_width > 20
-        obstacle_size = 0.9 if is_large_grid else 0.8
-        marker_radius = 0.4 if is_large_grid else 0.35
-        robot_radius = 0.35 if is_large_grid else 0.3
-        line_width = 1.5 if is_large_grid else 2
-        font_size = 12 if is_large_grid else 16
-        path_marker_size = 2 if is_large_grid else 4
-        
-        # Draw obstacles
-        for obs in self.obstacles:
-            obstacle_rect = patches.FancyBboxPatch(
-                (obs.x - obstacle_size/2, obs.y - obstacle_size/2), obstacle_size, obstacle_size,
-                boxstyle="round,pad=0.02,rounding_size=0.1",
-                facecolor='#e94560', edgecolor='#ff6b6b', linewidth=line_width,
-                alpha=0.9
-            )
-            self.ax.add_patch(obstacle_rect)
-        
-        # Draw goal with glow effect
-        goal_glow = plt.Circle(
-            (self.goal.x, self.goal.y), marker_radius + 0.15, 
-            color='#00ff88', alpha=0.3
-        )
-        self.ax.add_patch(goal_glow)
-        
-        goal_marker = plt.Circle(
-            (self.goal.x, self.goal.y), marker_radius,
-            facecolor='#00ff88', edgecolor='#00cc6a', linewidth=line_width
-        )
-        self.ax.add_patch(goal_marker)
-        self.ax.text(self.goal.x, self.goal.y, '★', fontsize=font_size, 
-                     ha='center', va='center', color='#1a1a2e', fontweight='bold')
-        
-        # Initialize robot marker (will be updated)
-        self.robot_marker = plt.Circle(
-            (0, 0), robot_radius, facecolor='#4cc9f0', edgecolor='#00b4d8', linewidth=line_width
-        )
-        self.ax.add_patch(self.robot_marker)
-        
-        # Initialize path line
-        self.path_line, = self.ax.plot([], [], 'o-', color='#4cc9f0', 
-                                        alpha=0.4, linewidth=line_width, markersize=path_marker_size)
-        
-        # Title and labels
-        self.title = self.ax.set_title('POMDP Drone Navigation', 
-                                        fontsize=16, fontweight='bold', 
-                                        color='#eaeaea', pad=15)
-        
-        self.ax.set_xlabel('X', fontsize=12, color='#aaaaaa')
-        self.ax.set_ylabel('Y', fontsize=12, color='#aaaaaa')
-        
-        # Customize ticks (reduce density for large grids)
-        tick_step = 1 if self.grid_width <= 15 else (5 if self.grid_width <= 50 else 10)
-        self.ax.set_xticks(range(0, self.grid_width, tick_step))
-        self.ax.set_yticks(range(0, self.grid_height, tick_step))
-        self.ax.tick_params(colors='#aaaaaa')
-        for spine in self.ax.spines.values():
-            spine.set_color('#0f3460')
-        
-        # Add legend
-        legend_elements = [
-            patches.Patch(facecolor='#4cc9f0', edgecolor='#00b4d8', label='Robot'),
-            patches.Patch(facecolor='#e94560', edgecolor='#ff6b6b', label='Obstacle'),
-            patches.Patch(facecolor='#00ff88', edgecolor='#00cc6a', label='Goal'),
-        ]
-        self.ax.legend(handles=legend_elements, loc='upper left', 
-                       facecolor='#1a1a2e', edgecolor='#0f3460',
-                       labelcolor='#eaeaea')
-        
-        # Status text
-        self.status_text = self.ax.text(
-            0.98, 0.02, '', transform=self.ax.transAxes,
-            fontsize=10, color='#eaeaea', ha='right', va='bottom',
-            bbox=dict(boxstyle='round', facecolor='#1a1a2e', edgecolor='#0f3460', alpha=0.8)
-        )
+        self.ax.set_xlabel('X Position')
+        self.ax.set_ylabel('Y Position')
+        self.ax.set_title('POMDP Drone Navigation')
+        self.ax.grid(True, alpha=0.3)
+        self.ax.legend(loc='upper left')
+        self.ax.set_aspect('equal', adjustable='box')
         
         plt.tight_layout()
         self.fig.canvas.draw()
-        plt.pause(0.1)
+        plt.pause(0.01)
     
-    def update(self, robot_pos, step: int, action_name: str = ""):
+    def update(self, robot_pos, step: int, action_name: str = "", reward: float = 0.0, total_reward: float = 0.0):
         """
         Update the visualization with new robot position.
         
@@ -148,43 +115,66 @@ class GridVisualizer:
             robot_pos: Coordinate object with robot's current position
             step: Current simulation step
             action_name: Name of the action taken
+            reward: Reward received at this step
+            total_reward: Total accumulated reward
         """
-        # Update robot marker position
-        self.robot_marker.center = (robot_pos.x, robot_pos.y)
+        # Remove all dynamic artists from previous update
+        for artist in self._dynamic_artists:
+            artist.remove()
+        self._dynamic_artists = []
+        
+        # Track start position from first update if not already set
+        if not self.first_position_received:
+            if self.start_pos is None:
+                # Set start position from first robot position
+                self.start_scatter.set_offsets([[robot_pos.x, robot_pos.y]])
+            self.first_position_received = True
         
         # Add to path history
         self.path_history.append((robot_pos.x, robot_pos.y))
         
-        # Update path line
-        if len(self.path_history) > 1:
+        # Add reward to history (skip first step which has no reward)
+        if step > 0:
+            self.reward_history.append(reward)
+        
+        # Update path line and scatter
+        if len(self.path_history) > 0:
             xs, ys = zip(*self.path_history)
             self.path_line.set_data(xs, ys)
+            self.path_scatter.set_offsets(np.c_[xs, ys])
         
-        # Update title with step info
-        self.title.set_text(f'POMDP Drone Navigation | Step: {step} | Action: {action_name}')
+        # Add reward labels on each node (starting from position 1, as position 0 has no reward)
+        if len(self.path_history) > 1:
+            path_positions = np.array(self.path_history)
+            for i, reward_val in enumerate(self.reward_history):
+                pos = path_positions[i + 1]  # i+1 because reward_history[i] corresponds to transition to state[i+1]
+                text = self.ax.text(pos[0], pos[1] + 0.5, f'{reward_val:.1f}', 
+                                   fontsize=6, ha='center', va='bottom',
+                                   bbox=dict(boxstyle='round,pad=0.2', facecolor='yellow', alpha=0.4),
+                                   zorder=7)
+                self._dynamic_artists.append(text)
         
-        # Update status text
-        status = f'Position: ({robot_pos.x}, {robot_pos.y})\nGoal: ({self.goal.x}, {self.goal.y})'
+        # Update current position marker (orange circle)
+        self.robot_scatter.set_offsets([[robot_pos.x, robot_pos.y]])
+        
+        # Update title with step info (matching MDP format)
         dist = abs(robot_pos.x - self.goal.x) + abs(robot_pos.y - self.goal.y)
-        status += f'\nManhattan Distance: {dist}'
-        self.status_text.set_text(status)
+        reward_text = f'Reward: {reward:.2f}, ' if step > 0 else ''
+        self.ax.set_title(f'POMDP Drone Navigation\n'
+                         f'Step: {step}, Action: {action_name}, {reward_text}Total Reward: {total_reward:.2f}\n'
+                         f'Position: ({robot_pos.x}, {robot_pos.y}), Distance to Goal: {dist:.2f}')
         
         # Redraw
+        plt.tight_layout()
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
-        plt.pause(0.05)  # Small pause for animation effect
+        plt.pause(0.01)  # Small pause for animation effect
     
     def show_goal_reached(self):
         """Display goal reached celebration."""
-        self.title.set_text('🎉 GOAL REACHED! 🎉')
-        self.title.set_color('#00ff88')
-        
-        # Add celebration effect
-        celebration = plt.Circle(
-            (self.goal.x, self.goal.y), 0.6,
-            facecolor='none', edgecolor='#00ff88', linewidth=3, alpha=0.8
-        )
-        self.ax.add_patch(celebration)
+        # Update title to show goal reached
+        current_title = self.ax.get_title()
+        self.ax.set_title(f'🎉 GOAL REACHED! 🎉\n{current_title}')
         
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()

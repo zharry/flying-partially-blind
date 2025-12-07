@@ -49,18 +49,18 @@ STEP_PENALTY = 0
 
 # Threshold parameters
 GOAL_THRESHOLD = 0.25      # Distance threshold to consider goal reached, should not be exactly 0
-OBSTACLE_THRESHOLD = 1.0  # Radius around obstacle for collision, should not be exactly 0
+OBSTACLE_THRESHOLD = 1.0   # Radius around obstacle for collision, should not be exactly 0
 
 # A* parameters
 ASTAR_LOOKAHEAD_DISTANCE = 5        # Number of waypoints to look ahead
-ASTAR_OBSTACLE_CLEARANCE = 2        # Minimum distance to maintain from obstacles when planning A* path
+ASTAR_OBSTACLE_CLEARANCE = 1.25        # Minimum distance to maintain from obstacles when planning A* path
 ASTAR_MAX_DEVIATION = 3             # Maximum allowed distance from A* path before penalty applies
 ASTAR_DEVIATION_PENALTY = -10       # Base Penalty for distances beyond max deviation
 
 # MDP parameters  
 DISCOUNT_FACTOR = 0.8
-ROLLOUT_NUM_ROLLOUTS = 1
-ROLLOUT_MAX_DEPTH = 5
+ROLLOUT_NUM_ROLLOUTS = 10
+ROLLOUT_MAX_DEPTH = 10
 
 # =============================================================================
 # MDP MULTI-AGENT CONFIGURATION
@@ -265,10 +265,32 @@ EASY_EMPTY_FIELD = TestCase(
     difficulty="easy",
     start_pos=(37, 37),
     goal_pos=(3, 3),
-    multi_agent_start_pos=[(1,5),(5,1),(35,35)],
-    multi_agent_goal_pos=[(35,30),(30,35),(5,5)],
+    multi_agent_start_pos=[(37, 37)],
+    multi_agent_goal_pos=[(3, 3)],
     obstacles=[],
     description="Empty field with no obstacles"
+)
+
+EASY_EMPTY_FIELD_2_AGENTS = TestCase(
+    name="easy_empty_field_2_agents",
+    difficulty="easy",
+    start_pos=(37, 37),
+    goal_pos=(3, 3),
+    multi_agent_start_pos=[(1, 5), (5, 1)],
+    multi_agent_goal_pos=[(35, 30), (30, 35)],
+    obstacles=[],
+    description="Empty field with no obstacles with 2 agents"
+)
+
+EASY_EMPTY_FIELD_3_AGENTS = TestCase(
+    name="easy_empty_field_3_agents",
+    difficulty="easy",
+    start_pos=(37, 37),
+    goal_pos=(3, 3),
+    multi_agent_start_pos=[(1, 5), (5, 1), (35, 35)],
+    multi_agent_goal_pos=[(35, 30), (30, 35), (5, 5)],
+    obstacles=[],
+    description="Empty field with no obstacles with 3 agents"
 )
 
 EASY_SCATTERED_OBSTACLES = TestCase(
@@ -409,7 +431,7 @@ HARD_TWO_LINE_MAZE = TestCase(
     difficulty="hard",
     start_pos=(5, 5),
     goal_pos=(35, 35),
-    multi_agent_start_pos=[(5, 5),(5, 3),(5, 1)],
+    multi_agent_start_pos=[(5, 5),(3, 3),(1, 1)],
     multi_agent_goal_pos=[(35, 35),(35, 33),(35, 31)],
     obstacles=(
         _generate_line(0, 12, 24, 12) +   # First horizontal line at y=12
@@ -423,8 +445,8 @@ HARD_SPIRAL_MAZE = TestCase(
     difficulty="hard",
     start_pos=(2, 2),
     goal_pos=(17, 20),
-    multi_agent_start_pos=[(2, 2)],
-    multi_agent_goal_pos=[(17, 20)],
+    multi_agent_start_pos=[(2, 2), (6, 2), (10, 2)],
+    multi_agent_goal_pos=[(17, 20), (19, 20), (21, 20)],
     obstacles=(
         # Outer boundary walls
         _generate_line(0, 0, 39, 0) +      # Bottom wall
@@ -489,6 +511,8 @@ HARD_HAIRPIN_TURN = TestCase(
 TEST_CASES = {
     # Easy
     "easy_empty_field": EASY_EMPTY_FIELD,
+    "easy_empty_field_2_agents": EASY_EMPTY_FIELD_2_AGENTS,
+    "easy_empty_field_3_agents": EASY_EMPTY_FIELD_3_AGENTS,
     "easy_scattered_obstacles": EASY_SCATTERED_OBSTACLES,
     "easy_open_field": EASY_OPEN_FIELD,
     "easy_corridor": EASY_CORRIDOR,
