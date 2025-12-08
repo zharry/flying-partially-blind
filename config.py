@@ -8,16 +8,12 @@ seed = random.randint(0, 1000)
 rng = np.random.RandomState(seed)
 
 # =============================================================================
-# SIMLUATION CONFIGURATION
+# MDP SIMLUATION CONFIGURATION
 # =============================================================================
 
 # Grid world parameters
 GRID_SIZE = 40            # Zero-indexed, non-inclusive
 MAXIMUM_TIME_STEPS = 100  # Zero-indexed, non-inclusive, no more than 100 (otherwise edit wind array)
-
-# Velocity bounds (units/s)
-VELOCITY_MIN = -10        # Inclusive
-VELOCITY_MAX = 10         # Inclusive
 
 # Battery parameters
 BATTERY_MIN = 0          # Inclusive
@@ -25,17 +21,21 @@ BATTERY_MAX = 95         # Inclusive, no more than MAXIMUM_TIME_STEPS
 BATTERY_DRAIN_RATE = 1   # Per time step
 
 # Wind parameters (units/s)
-WIND_MIN = -1            # Inclusive, See Below
-WIND_MAX = 1             # Inclusive, See Below
-# WIND = np.array([[0, 0] for _ in range(MAXIMUM_TIME_STEPS)])
+# Inclusive
+WIND_ENABLE = False
+WIND_MIN = -1
+WIND_MAX = 1
 WIND = np.array([[rng.randint(WIND_MIN, WIND_MAX + 1), rng.randint(WIND_MIN, WIND_MAX + 1)] for _ in range(MAXIMUM_TIME_STEPS)])
 
-# Action bounds (acceleration, units/s^2)
-ACCEL_MIN = -2           # Inclusive
-ACCEL_MAX = 2            # Inclusive
+# Velocity, Acceleration bounds (units/s) and (units/s^2)
+# Inclusive
+VELOCITY_MIN = -5
+VELOCITY_MAX = 5
+ACCEL_MIN = -2
+ACCEL_MAX = 2
 
 # =============================================================================
-# MDP CONFIGURATION
+# MDP SINGLE AGENT CONFIGURATION
 # =============================================================================
 
 # Collision parameters
@@ -49,39 +49,31 @@ STEP_PENALTY = 0
 
 # Threshold parameters
 GOAL_THRESHOLD = 0.25      # Distance threshold to consider goal reached, should not be exactly 0
-OBSTACLE_THRESHOLD = 1.0  # Radius around obstacle for collision, should not be exactly 0
+OBSTACLE_THRESHOLD = 1.0   # Radius around obstacle for collision, should not be exactly 0
 
 # A* parameters
 ASTAR_LOOKAHEAD_DISTANCE = 5        # Number of waypoints to look ahead
-ASTAR_OBSTACLE_CLEARANCE = 2      # Minimum distance to maintain from obstacles when planning A* path
-ASTAR_MAX_DEVIATION = 5             # Maximum allowed distance from A* path before penalty applies
-ASTAR_DEVIATION_PENALTY = -20.0     # Base Penalty for distances beyond max deviation
+ASTAR_OBSTACLE_CLEARANCE = 1.25        # Minimum distance to maintain from obstacles when planning A* path
+ASTAR_MAX_DEVIATION = 3             # Maximum allowed distance from A* path before penalty applies
+ASTAR_DEVIATION_PENALTY = -10       # Base Penalty for distances beyond max deviation
 
 # MDP parameters  
 DISCOUNT_FACTOR = 0.8
-ROLLOUT_NUM_ROLLOUTS = 1
-ROLLOUT_MAX_DEPTH = 15
+ROLLOUT_NUM_ROLLOUTS = 10
+ROLLOUT_MAX_DEPTH = 10
 
 # =============================================================================
-# MDP MULTI-AGENTCONFIGURATION
+# MDP MULTI-AGENT CONFIGURATION
 # =============================================================================
+
+# Number of agents in the system, this is overwritten by the configure() function
+NUM_AGENTS = 2
 
 # Multi-agent parameters
-NUM_AGENTS = 2                       # Number of agents in the system
-AGENT_COLLISION_THRESHOLD = 0.25     # Distance threshold for agent-agent collision, should not be exactly 0
+AGENT_COLLISION_THRESHOLD = 0.5     # Distance threshold for agent-agent collision, should not be exactly 0
 AGENT_COLLISION_PENALTY = -10000      # Penalty for colliding with another agent, should not be exactly 0
 
-# Multi-agent goal positions, must have length NUM_AGENTS
-MULTI_AGENT_GOAL_POSITIONS = np.array([
-    [20, 35],
-    [35, 20],
-])
-
-# Multi-agent starting positions, must have length NUM_AGENTS
-MULTI_AGENT_STARTING_POSITIONS = np.array([
-    [10, 5],
-    [5, 10],
-])
+AGENT_REWARDS = [GOAL_REWARD] * 1000
 
 # =============================================================================
 # POMDP CONFIGURATION
@@ -120,10 +112,11 @@ LIVE_UPDATE = True
 PLOT_FIGURE_SIZE = 1500
 
 # =============================================================================
-# MDP LEGACYTEST CASE CONFIGURATION
+# LEGACY TEST CASES CONFIGURATION
 # =============================================================================
 
-# There will all be overwritten by the configure() function in run_mdp_single_agent.py
+# There will all be overwritten by the configure() function in run_mdp_single_agent.py and run_mdp_multi_agent.py.
+# This is left here to be backwards compatible with existing code while using new testing framework.
 
 # Obstacle positions (x, y)
 OBSTACLES = rng.randint(0, GRID_SIZE, size=(40, 2))
@@ -135,7 +128,19 @@ STARTING_POSITION = np.array([
 ])
 
 # Goal position
-GOAL_POSITION = np.array([35, 35])
+GOAL_POSITION = np.array([35, 35])                
+
+# Multi-agent goal positions, must have length NUM_AGENTS
+MULTI_AGENT_GOAL_POSITIONS = np.array([
+    [20, 35],
+    [35, 20],
+])
+
+# Multi-agent starting positions, must have length NUM_AGENTS
+MULTI_AGENT_STARTING_POSITIONS = np.array([
+    [10, 5],
+    [5, 10],
+])
 
 # =============================================================================
 # TEST CASE DEFINITION
@@ -147,6 +152,8 @@ class TestCase:
     difficulty: str
     start_pos: Tuple[int, int]
     goal_pos: Tuple[int, int]
+    multi_agent_start_pos: List[Tuple[int, int]]
+    multi_agent_goal_pos: List[Tuple[int, int]]
     obstacles: List[Tuple[int, int]]
     description: str = ""
 
@@ -253,18 +260,52 @@ def _generate_circle(center_x: int, center_y: int, radius: int) -> List[Tuple[in
 # --- EASY TEST CASES ---
 # Few obstacles, relatively clear path to goal
 
+EASY_EMPTY_FIELD = TestCase(
+    name="easy_empty_field",
+    difficulty="easy",
+    start_pos=(37, 37),
+    goal_pos=(3, 3),
+    multi_agent_start_pos=[(37, 37)],
+    multi_agent_goal_pos=[(3, 3)],
+    obstacles=[],
+    description="Empty field with no obstacles"
+)
+
+EASY_EMPTY_FIELD_2_AGENTS = TestCase(
+    name="easy_empty_field_2_agents",
+    difficulty="easy",
+    start_pos=(37, 37),
+    goal_pos=(3, 3),
+    multi_agent_start_pos=[(1, 5), (5, 1)],
+    multi_agent_goal_pos=[(35, 30), (30, 35)],
+    obstacles=[],
+    description="Empty field with no obstacles with 2 agents"
+)
+
+EASY_EMPTY_FIELD_3_AGENTS = TestCase(
+    name="easy_empty_field_3_agents",
+    difficulty="easy",
+    start_pos=(37, 37),
+    goal_pos=(3, 3),
+    multi_agent_start_pos=[(1, 5), (5, 1), (35, 35)],
+    multi_agent_goal_pos=[(35, 30), (30, 35), (5, 5)],
+    obstacles=[],
+    description="Empty field with no obstacles with 3 agents"
+)
+
 EASY_SCATTERED_OBSTACLES = TestCase(
     name="easy_scattered_obstacles",
     difficulty="easy",
     start_pos=(5, 5),
     goal_pos=(35, 35),
+    multi_agent_start_pos=[(5, 5)],
+    multi_agent_goal_pos=[(35, 35)],
     obstacles = [
-        (x, y)
-        for x, y in (
-            map(tuple, rng.randint(0, GRID_SIZE, size=(80, 2)))  # over-sample, will select first 40 valid
-        )
-        if not (2 <= x <= 7 and 2 <= y <= 7) and not (32 <= x <= 37 and 32 <= y <= 37)
-    ][:40],
+        (1, 15), (4, 9), (8, 12), (10, 23), (12, 26), (13, 5), (15, 11), (16, 17), (18, 14), (19, 26),
+        (20, 16), (22, 6), (23, 17), (24, 8), (25, 34), (28, 19), (29, 12), (30, 4), (31, 28), (33, 24),
+        (12, 33), (17, 27), (21, 2), (27, 31), (5, 20), (7, 23), (6, 28), (38, 12), (36, 25), (14, 28),
+        (11, 18), (9, 33), (28, 21), (32, 11), (16, 8), (18, 36), (25, 7), (35, 2), (22, 15), (38, 29)
+    ],
     description="Open field with random scattered obstacles"
 )
 
@@ -273,6 +314,8 @@ EASY_OPEN_FIELD = TestCase(
     difficulty="easy",
     start_pos=(0, 0),
     goal_pos=(39, 39),
+    multi_agent_start_pos=[(0, 0)],
+    multi_agent_goal_pos=[(39, 39)],
     obstacles=[
         (10, 10), (10, 11), (10, 12),
         (25, 20), (26, 20), (27, 20),
@@ -285,6 +328,8 @@ EASY_CORRIDOR = TestCase(
     difficulty="easy",
     start_pos=(0, 20),
     goal_pos=(39, 20),
+    multi_agent_start_pos=[(0, 20)],
+    multi_agent_goal_pos=[(39, 20)],
     obstacles=(
         _generate_line(5, 15, 5, 19) +  # Small wall below path
         _generate_line(30, 21, 30, 25)  # Small wall above path
@@ -300,6 +345,8 @@ MEDIUM_WALL_GAP = TestCase(
     difficulty="medium",
     start_pos=(0, 20),
     goal_pos=(39, 20),
+    multi_agent_start_pos=[(0, 20)],
+    multi_agent_goal_pos=[(39, 20)],
     obstacles=(
         _generate_line(15, 10, 15, 17) +  # Wall with gap at y=19-21
         _generate_line(15, 23, 15, 30) +
@@ -314,6 +361,8 @@ MEDIUM_ZIGZAG = TestCase(
     difficulty="medium",
     start_pos=(0, 0),
     goal_pos=(39, 39),
+    multi_agent_start_pos=[(0, 0)],
+    multi_agent_goal_pos=[(39, 39)],
     obstacles=(
         _generate_line(10, 0, 10, 25) +   # First vertical wall
         _generate_line(20, 15, 20, 39) +  # Second vertical wall
@@ -327,6 +376,8 @@ MEDIUM_SCATTERED = TestCase(
     difficulty="medium",
     start_pos=(2, 2),
     goal_pos=(37, 37),
+    multi_agent_start_pos=[(2, 2)],
+    multi_agent_goal_pos=[(37, 37)],
     obstacles=[
         # Multiple small clusters scattered across the grid
         (8, 8), (8, 9), (9, 8), (9, 9),
@@ -349,6 +400,8 @@ HARD_MAZE_CORRIDOR = TestCase(
     difficulty="hard",
     start_pos=(1, 1),
     goal_pos=(7, 27),
+    multi_agent_start_pos=[(1, 1)],
+    multi_agent_goal_pos=[(7, 27)],
     obstacles=(
         # Create a maze-like pattern
         _generate_line(5, 0, 5, 30) +
@@ -367,6 +420,8 @@ HARD_C_INSIDE_OUT = TestCase(
     difficulty="hard",
     start_pos=(20, 14),  # Inside the C at the very bottom
     goal_pos=(2, 20),    # Far left, outside the C
+    multi_agent_start_pos=[(20, 14)],
+    multi_agent_goal_pos=[(2, 20)],
     obstacles=_generate_c_shape(20, 20, 24, 16, opening="right"),
     description="Drone trapped at bottom of large C-shape, goal is outside on the right"
 )
@@ -376,6 +431,8 @@ HARD_TWO_LINE_MAZE = TestCase(
     difficulty="hard",
     start_pos=(5, 5),
     goal_pos=(35, 35),
+    multi_agent_start_pos=[(5, 5),(3, 3),(1, 1)],
+    multi_agent_goal_pos=[(35, 35),(35, 33),(35, 31)],
     obstacles=(
         _generate_line(0, 12, 24, 12) +   # First horizontal line at y=12
         _generate_line(15, 25, 39, 25)    # Second horizontal line at y=25
@@ -388,6 +445,8 @@ HARD_SPIRAL_MAZE = TestCase(
     difficulty="hard",
     start_pos=(2, 2),
     goal_pos=(17, 20),
+    multi_agent_start_pos=[(2, 2), (6, 2), (10, 2)],
+    multi_agent_goal_pos=[(17, 20), (19, 20), (21, 20)],
     obstacles=(
         # Outer boundary walls
         _generate_line(0, 0, 39, 0) +      # Bottom wall
@@ -418,6 +477,8 @@ HARD_HAIRPIN_TURN = TestCase(
     difficulty="hard",
     start_pos=(18, 3),   # Bottom middle, slightly left
     goal_pos=(22, 3),    # Bottom middle, slightly right
+    multi_agent_start_pos=[(18, 3)],
+    multi_agent_goal_pos=[(22, 3)],
     obstacles=(
         # Left corridor outer wall (stops before roundabout, one unit wider)
         _generate_line(11, 0, 11, 26) +
@@ -449,6 +510,9 @@ HARD_HAIRPIN_TURN = TestCase(
 
 TEST_CASES = {
     # Easy
+    "easy_empty_field": EASY_EMPTY_FIELD,
+    "easy_empty_field_2_agents": EASY_EMPTY_FIELD_2_AGENTS,
+    "easy_empty_field_3_agents": EASY_EMPTY_FIELD_3_AGENTS,
     "easy_scattered_obstacles": EASY_SCATTERED_OBSTACLES,
     "easy_open_field": EASY_OPEN_FIELD,
     "easy_corridor": EASY_CORRIDOR,

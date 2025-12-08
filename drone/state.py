@@ -175,8 +175,10 @@ class DroneState:
                                     states.append(DroneState(position=np.array([x, y]), velocity=np.array([vx, vy]), battery=battery, wind=np.array([wx, wy])))
         return np.array(states)
 
-    def is_goal_reached(self) -> bool:
-        if np.linalg.norm(self.position - config.GOAL_POSITION) <= config.GOAL_THRESHOLD:
+    def is_goal_reached(self, goal_position: np.ndarray = None) -> bool:
+        if goal_position is None:
+            goal_position = config.GOAL_POSITION
+        if np.linalg.norm(self.position - goal_position) <= config.GOAL_THRESHOLD:
             return True
         return False
     

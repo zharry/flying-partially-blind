@@ -1,21 +1,21 @@
 import argparse
-from tkinter import Grid
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 
 import config
-from policy.rollout import RolloutPlanner, RandomPolicy, GreedyPolicy, RandomGreedyPolicy, AStarPolicy
-from mdp.simulator import Simulator
-from mdp.visualization import setup_live_plot, update_live_plot, visualize_path
-from mdp.drone import DroneMDP
+from policy.multi_agent_rollout import MultiAgentRolloutPlanner, AStarPolicy
+from mdp.simulator_multi_agent import MultiAgentSimulator
+from mdp.drone_multi_agent import MultiAgentDroneMDP
+from mdp.visualization_multi_agent import setup_live_plot_multi_agent, update_live_plot_multi_agent, visualize_path_multi_agent
 from drone.state import DroneState
-from drone.action import DroneAction
+from drone.state_multi_agent import MultiAgentDroneState
+from drone.action_multi_agent import MultiAgentAction
 
 seed = config.seed
 
 def configure():
-    parser = argparse.ArgumentParser(description="POMDP Drone Navigation Simulation")
+    parser = argparse.ArgumentParser(description="Multi-Agent MDP Drone Navigation Simulation")
     parser.add_argument(
         "--test-case", "-t",
         type=str,
@@ -64,7 +64,7 @@ def configure():
     #     default=500,
     #     help="Maximum number of simulation steps"
     # )
-    # Quiet mode is not support for single agent MDP
+    # Quiet mode is not support for multi agent MDP
     # parser.add_argument(
     #     "--quiet", "-q",
     #     action="store_true",
@@ -105,7 +105,7 @@ def configure():
     print(f"  Acceleration: {config.ACCEL_MAX}, {config.ACCEL_MIN}")
     print(f"  Max Steps: {config.MAXIMUM_TIME_STEPS}")
     print()
-
+    
     # List mode
     if args.list:
         print("\nAvailable Test Cases:")
@@ -119,33 +119,39 @@ def configure():
     # Get configuration and convert to legacy format
     try:
         test_case = config.get_test_case(args.test_case)
+        config.NUM_AGENTS = len(test_case.multi_agent_start_pos)
+        config.MULTI_AGENT_STARTING_POSITIONS = np.array(test_case.multi_agent_start_pos)
+        config.MULTI_AGENT_GOAL_POSITIONS = np.array(test_case.multi_agent_goal_pos)
         config.OBSTACLES = np.array(test_case.obstacles)
         config.MAX_OBSTACLES = config.OBSTACLES.shape[0]
-        config.STARTING_POSITION =np.array([test_case.start_pos])
-        config.GOAL_POSITION = np.array(test_case.goal_pos)
+        config.AGENT_REWARDS = [config.GOAL_REWARD] * config.NUM_AGENTS
     except ValueError as e:
         print(f"Error: {e}")
         print("\nUse --list to see available test cases")
     
 
 def main():
-    mdp = DroneMDP()
+    mdp = MultiAgentDroneMDP()
     base_policy = AStarPolicy()
-
-    initial_state = DroneState(
-        position=config.STARTING_POSITION[0], 
-        velocity=np.array([0, 0]), 
-        battery=config.BATTERY_MAX, 
-        wind=config.WIND[0]
-    )
-
-    simulator = Simulator(
-        mdp=mdp, 
-        initial_state=initial_state, 
+    
+    agent_states = []
+    for agent_id in range(config.NUM_AGENTS):
+        agent_state = DroneState(
+            position=config.MULTI_AGENT_STARTING_POSITIONS[agent_id], 
+            velocity=np.array([0, 0]), 
+            battery=config.BATTERY_MAX, 
+            wind=config.WIND[0]
+        )
+        agent_states.append(agent_state)
+    initial_joint_state = MultiAgentDroneState(agent_states)
+    
+    simulator = MultiAgentSimulator(
+        multi_agent_mdp=mdp, 
+        initial_joint_states=initial_joint_state, 
         seed=seed
     )
-
-    planner = RolloutPlanner(
+    
+    planner = MultiAgentRolloutPlanner(
         mdp=mdp, 
         base_policy=base_policy,
         num_rollouts=config.ROLLOUT_NUM_ROLLOUTS, 
@@ -156,7 +162,7 @@ def main():
     # Set up live visualization
     if config.LIVE_UPDATE:
         plt.ion()  # Turn on interactive mode
-        fig, ax = setup_live_plot(seed, mdp)
+        fig, ax = setup_live_plot_multi_agent(seed, mdp, base_policy)
     else:
         fig, ax = None, None
 
@@ -164,16 +170,16 @@ def main():
     start_time = time.time()
 
     while not simulator.is_done():
-        action, value = planner.select_action(simulator.state, simulator.tick)
+        joint_action, values = planner.select_action(simulator.joint_states, simulator.tick)
         print(f"planner.select_action - Tick: {simulator.tick}")
-        print(f"  State: {simulator.state}")
-        print(f"  Action: {action}")
-        print(f"  Expected Value: {value}")
+        print(f"  Joint State: {simulator.joint_states}")
+        print(f"  Joint Action: {joint_action}")
+        print(f"  Expected Values: {values}")
         
-        next_state, reward, done = simulator.step(action)
+        next_joint_states, rewards, done = simulator.step(joint_action)
         print(f"simulator.step - Tick: {simulator.tick}")
-        print(f"  Next State: {next_state}")
-        print(f"  Reward: {reward}")
+        print(f"  Next Joint State: {next_joint_states}")
+        print(f"  Rewards: {rewards}")
         print(f"  Done: {done}")
 
         print()
@@ -181,19 +187,22 @@ def main():
         # Update visualization after each step
         if config.LIVE_UPDATE:
             elapsed_time = time.time() - start_time
-            update_live_plot(fig, ax, simulator, reward, seed, mdp, elapsed_time)
+            update_live_plot_multi_agent(fig, ax, simulator, rewards, seed, mdp, elapsed_time, base_policy)
 
     # End timing
     end_time = time.time()
     elapsed_time = end_time - start_time
 
-    print(f"Total Reward: {simulator.get_total_reward()}")
+    total_rewards = simulator.get_total_reward()
+    print(f"Total Rewards per Agent: {total_rewards}")
+    print(f"Sum of All Rewards: {np.sum(total_rewards):.2f}")
     print(f"Simulation Time: {elapsed_time:.2f} seconds")
 
     if config.LIVE_UPDATE:
         plt.ioff()  # Turn off interactive mode
-    visualize_path(simulator, seed, mdp, elapsed_time)  # Show final plot
+    visualize_path_multi_agent(simulator, seed, mdp, elapsed_time, base_policy)  # Show final plot
 
 if __name__ == "__main__":
     configure()
     main()
+

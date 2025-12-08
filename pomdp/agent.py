@@ -5,7 +5,7 @@ import random
 import pomdp_py
 
 from config import GRID_WIDTH, GRID_HEIGHT, DIRECTIONS
-from state_observation import *
+from pomdp.state_observation import *
 
 class RobotAgent(pomdp_py.Agent):
     def __init__(self, init_pos: Coordinate, goal: Coordinate, directions):
